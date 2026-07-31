@@ -56,7 +56,4 @@ streamlit run dashboard.py
 
 ## Deployment
 
-Deployed via [Streamlit Community Cloud](https://share.streamlit.io):
-connect the GitHub repo, point it at `dashboard.py`, and it builds
-automatically from `requirements.txt`. See `.gitignore` for what's excluded
-from the repo (local venv, node_modules, secrets).
+https://ebikeescooterpowerbidashboard-dpdpqduho5p45wyrmpenmq.streamlit.app/ 
