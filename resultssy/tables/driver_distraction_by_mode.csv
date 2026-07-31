@@ -1,0 +1,23 @@
+MODE,DRIVER_DISTRACTION_CODE,count
+Bicycle,Electronic Communication Devices,23
+Bicycle,External Distraction,63
+Bicycle,Inattentive,410
+Bicycle,Not Distracted,4172
+Bicycle,Other Electronic Device,7
+Bicycle,Other Inside the Vehicle,25
+Bicycle,Unknown,496
+E-Bike,Electronic Communication Devices,6
+E-Bike,External Distraction,45
+E-Bike,Inattentive,351
+E-Bike,Not Distracted,4925
+E-Bike,Other Electronic Device,4
+E-Bike,Other Inside the Vehicle,8
+E-Bike,Unknown,580
+E-Scooter,Electronic Communication Devices,15
+E-Scooter,External Distraction,45
+E-Scooter,Inattentive,283
+E-Scooter,Not Distracted,3902
+E-Scooter,Other Electronic Device,3
+E-Scooter,Other Inside the Vehicle,8
+E-Scooter,Texting,1
+E-Scooter,Unknown,627

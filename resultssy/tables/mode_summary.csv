@@ -1,0 +1,5 @@
+mode,count,pct_total,from_qwen_narratives,from_structural_data,note
+E-Bike,6353,31.09,6353,0,E-Bike/E-Scooter = Qwen-only. Structural data cannot identify these.
+Bicycle,5620,27.5,5620,0,Bicycle from Qwen (5620) + structural S4_CRASH_TYPE/NON_MOTORIST_DESCRIPTION_CODE.
+E-Scooter,5274,25.81,5274,0,E-Bike/E-Scooter = Qwen-only. Structural data cannot identify these.
+Other,3190,15.61,3190,0,Bicycle from Qwen (3190) + structural S4_CRASH_TYPE/NON_MOTORIST_DESCRIPTION_CODE.

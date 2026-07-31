@@ -1,0 +1,8 @@
+metric,value,note
+query_params_report_numbers,20769,REPORT_NUMBERs originally pulled to build this data extract (query_params.csv). Some of these did not make it into the final crash_event.csv export.
+crash_event_total_crashes,20437,"Unique crashes actually present in crash_event.csv, all crash types (bicycle, pedestrian, single-vehicle, MV-only, animal, etc.)."
+active_mode_crashes,17247,"Crashes classified as Bicycle, E-Bike, or E-Scooter -- this dashboard's scope. Pedestrian-only, MV-only, and other non-active-mode crashes are excluded."
+bicycle_crashes,5620,Includes both Qwen-narrative-labeled and structurally-classified (S4_CRASH_TYPE / NON_MOTORIST_DESCRIPTION_CODE) bicycle crashes.
+ebike_crashes,6353,Identified exclusively via Qwen LLM narrative classification -- Florida crash forms have no structural E-Bike code.
+escooter_crashes,5274,Identified exclusively via Qwen LLM narrative classification -- Florida crash forms have no structural E-Scooter code.
+narrative_labeled_crashes,20769,Crashes with a Qwen-classified crash narrative (multilabel_ebike.xlsx + multilabel_RegBike.xlsx).

@@ -1,0 +1,10 @@
+MODE,INTERSECTION_CONTROL,count
+Bicycle,Signalized,1377
+Bicycle,Stop Control,949
+Bicycle,Yield sign,23
+E-Bike,Signalized,1564
+E-Bike,Stop Control,1188
+E-Bike,Yield sign,20
+E-Scooter,Signalized,1516
+E-Scooter,Stop Control,1130
+E-Scooter,Yield sign,9

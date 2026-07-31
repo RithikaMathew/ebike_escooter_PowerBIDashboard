@@ -1,0 +1,22 @@
+Metric,Description,Primary_File,Column(s),Notes
+Mode (narrative records),"Final mode for 20,769 multilabel-classified crashes",multilabel_ebike.xlsx + multilabel_RegBike.xlsx,Classification,"Mapped: ebike->E-Bike, escooter->E-Scooter, bicyclist->Bicycle, other->Other"
+Mode (structural – non-narrative records),Final mode for ~94k non-narrative crashes,crash_event.csv + non_motorist.csv,S4_CRASH_TYPE; NON_MOTORIST_DESCRIPTION_CODE,Bicycle only: S4_CRASH_TYPE='Bicycle' OR code='Bicyclist'. E-Bike/E-Scooter NOT in structural.
+Age,Age at time of crash for non-motorists,non_motorist.csv,S4_AGE_AT_TIME_OF_CRASH,Filtered to active modes by joining with crash_event MODE
+Gender,Sex of non-motorists,non_motorist.csv,SEX,Male/Female only
+Injury Severity,Injury outcome,non_motorist.csv,INJURY_SEVERITY,Non-motorist level; mapped to 5 categories
+Day vs Night,Crash timing,crash_event.csv,S4_DAY_OR_NIGHT,DAY/NIGHT
+Hour of Day,Crash hour,crash_event.csv,CRASH_DATE_AND_TIME,Hour extracted
+Day of Week,Crash day,crash_event.csv,CRASH_DATE_AND_TIME,Day name extracted
+Month,Crash month,crash_event.csv,CRASH_DATE_AND_TIME,Month extracted
+Year Trend,Annual crash counts,crash_event.csv,CRASH_YEAR,
+Intersection vs Segment,Location type,crash_event.csv,S4_IS_INTERSECTION_RELATED,Y/N
+Speed Limit,Posted speed,vehicle.csv,POSTED_SPEED,Linked via REPORT_NUMBER; 5-80 mph
+Road Type,Trafficway type,vehicle.csv,TRAFFICWAY_CODE,
+County,County,crash_event.csv,COUNTY_NAME,
+Light Condition,Lighting,crash_event.csv,LIGHT_CONDITION,
+Weather,Weather,crash_event.csv,WEATHER_CONDITION,
+MV Involvement,Motor vehicle involved,vehicle.csv,TYPE_OF_VEHICLE,MV = any vehicle NOT 'Pedalcycle/pedal/bicycle'
+Crash Group 06a,Bicycle crash scenario type,bicycle_typing_20.csv (ped bike typing folder),S4_CRASH_GROUP_DESCRIPTION,"Covers ALL crashes in the typing file (mostly bicycle+MV scenarios). Shows WHAT happened (e.g., Motorist Failed to Yield). NOT the same as 06d."
+Contributing Factors 06d,Road/environment conditions,crash_event.csv,ROAD_CIRCUMSTANCES_1; ENVIRONMENT_CIRCUMSTANCES_1,"ALL active modes (Bicycle+E-Bike+E-Scooter). Shows WHY conditions contributed. DIFFERENT from 06a: different source, different question, different scope."
+Lat/Lon,Crash location,crash_event.csv,S4_LATITUDE; S4_LONGITUDE; LATITUDE; LONGITUDE; S4_GEOLOCATION_CURRENT,S4 coords ~98.5% complete; raw HSMV coords ~55% complete.
+Qwen Classification,"Qwen/multilabel prediction (20,769 narratives)",multilabel_ebike.xlsx + multilabel_RegBike.xlsx,Classification,"4 raw classes: ebike, escooter, bicyclist, other"

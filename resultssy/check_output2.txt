@@ -1,0 +1,193 @@
+SHAPE: (17247, 29)
+
+COLUMNS:
+ ['REPORT_NUMBER', 'MODE', 'YEAR', 'HOUR', 'DOW', 'MONTH', 'COUNTY_NAME', 'LIGHT_CONDITION', 'WEATHER_CONDITION', 'S4_CRASH_SEVERITY', 'LOC_TYPE', 'DAY_NIGHT', 'mv_involved', 'S4_IS_AGGRESSIVE_DRIVING', 'S4_IS_ALCOHOL_RELATED', 'S4_IS_DRUG_RELATED', 'S4_IS_DISTRACTED', 'S4_IS_SPEEDING_RELATED', 'S4_IS_AGING_DRIVER', 'S4_IS_TEENAGER_DRIVER', 'S4_IS_UNRESTRAINED', 'CITED', 'AVG_AADT', 'MEDIAN_TYPE', 'SHOULDER_WIDTH', 'NUM_THRU_LANES', 'CONTEXT_CLASS', 'INTERSECTION_CONTROL', 'FARS_LANDUSE']
+
+DTYPES:
+ REPORT_NUMBER                 int64
+MODE                            str
+YEAR                          int64
+HOUR                          int64
+DOW                             str
+MONTH                         int64
+COUNTY_NAME                     str
+LIGHT_CONDITION                 str
+WEATHER_CONDITION               str
+S4_CRASH_SEVERITY               str
+LOC_TYPE                        str
+DAY_NIGHT                       str
+mv_involved                    bool
+S4_IS_AGGRESSIVE_DRIVING       bool
+S4_IS_ALCOHOL_RELATED          bool
+S4_IS_DRUG_RELATED             bool
+S4_IS_DISTRACTED               bool
+S4_IS_SPEEDING_RELATED         bool
+S4_IS_AGING_DRIVER             bool
+S4_IS_TEENAGER_DRIVER          bool
+S4_IS_UNRESTRAINED             bool
+CITED                          bool
+AVG_AADT                    float64
+MEDIAN_TYPE                 float64
+SHOULDER_WIDTH              float64
+NUM_THRU_LANES              float64
+CONTEXT_CLASS               float64
+INTERSECTION_CONTROL            str
+FARS_LANDUSE                    str
+dtype: object
+
+NULL % PER COLUMN:
+ NUM_THRU_LANES              100.0
+SHOULDER_WIDTH              100.0
+MEDIAN_TYPE                 100.0
+CONTEXT_CLASS               100.0
+FARS_LANDUSE                 98.2
+INTERSECTION_CONTROL         54.9
+AVG_AADT                     46.9
+MONTH                         0.0
+REPORT_NUMBER                 0.0
+MODE                          0.0
+YEAR                          0.0
+HOUR                          0.0
+DOW                           0.0
+mv_involved                   0.0
+DAY_NIGHT                     0.0
+LOC_TYPE                      0.0
+S4_CRASH_SEVERITY             0.0
+WEATHER_CONDITION             0.0
+LIGHT_CONDITION               0.0
+COUNTY_NAME                   0.0
+S4_IS_AGGRESSIVE_DRIVING      0.0
+S4_IS_UNRESTRAINED            0.0
+S4_IS_TEENAGER_DRIVER         0.0
+S4_IS_AGING_DRIVER            0.0
+S4_IS_SPEEDING_RELATED        0.0
+S4_IS_DISTRACTED              0.0
+S4_IS_DRUG_RELATED            0.0
+S4_IS_ALCOHOL_RELATED         0.0
+CITED                         0.0
+dtype: float64
+
+HEAD:
+    REPORT_NUMBER    MODE  YEAR  HOUR       DOW  MONTH COUNTY_NAME LIGHT_CONDITION WEATHER_CONDITION S4_CRASH_SEVERITY LOC_TYPE DAY_NIGHT  mv_involved  S4_IS_AGGRESSIVE_DRIVING  S4_IS_ALCOHOL_RELATED  S4_IS_DRUG_RELATED  S4_IS_DISTRACTED  S4_IS_SPEEDING_RELATED  S4_IS_AGING_DRIVER  S4_IS_TEENAGER_DRIVER  S4_IS_UNRESTRAINED  CITED  AVG_AADT  MEDIAN_TYPE  SHOULDER_WIDTH  NUM_THRU_LANES  CONTEXT_CLASS INTERSECTION_CONTROL FARS_LANDUSE
+0       26574149  E-Bike  2024     7    Friday     12   St. Lucie        Daylight             Clear            Injury  Segment       Day         True                     False                  False               False              True                   False               False                  False               False   True       NaN          NaN             NaN             NaN            NaN           Signalized          NaN
+1       26686565  E-Bike  2026    20  Saturday      1      Orange  Dark - Lighted             Clear    Serious Injury  Segment     Night         True                     False                  False               False              True                   False                True                  False               False  False       NaN          NaN             NaN             NaN            NaN         Stop Control          NaN
+2       26187644  E-Bike  2023    11    Friday     12     Brevard        Daylight             Clear            Injury  Segment       Day         True                     False                  False               False             False                   False                True                  False               False  False   17750.0          NaN             NaN             NaN            NaN         Stop Control          NaN
+
+--- MODE (top 10) ---
+MODE
+E-Bike       6353
+Bicycle      5620
+E-Scooter    5274
+Name: count, dtype: int64
+
+--- DOW (top 10) ---
+DOW
+Friday       2923
+Tuesday      2806
+Wednesday    2794
+Thursday     2689
+Monday       2533
+Saturday     1964
+Sunday       1538
+Name: count, dtype: int64
+
+--- LIGHT_CONDITION (top 10) ---
+LIGHT_CONDITION
+Daylight                   13276
+Dark - Lighted              2386
+Dark - Not Lighted           738
+Dusk                         515
+Dawn                         286
+Dark - Unknown Lighting       25
+Unknown                       15
+Other                          4
+NaN                            2
+Name: count, dtype: int64
+
+--- WEATHER_CONDITION (top 10) ---
+WEATHER_CONDITION
+Clear                14776
+Cloudy                1891
+Rain                   512
+Fog, Smog, Smoke        38
+Other                   23
+Severe Crosswinds        5
+NaN                      2
+Name: count, dtype: int64
+
+--- S4_CRASH_SEVERITY (top 10) ---
+S4_CRASH_SEVERITY
+Injury            12255
+No Injury          2920
+Serious Injury     1729
+Fatality            343
+Name: count, dtype: int64
+
+--- LOC_TYPE (top 10) ---
+LOC_TYPE
+Segment         9668
+Intersection    7579
+Name: count, dtype: int64
+
+--- DAY_NIGHT (top 10) ---
+DAY_NIGHT
+Day      13711
+Night     3536
+Name: count, dtype: int64
+
+--- MEDIAN_TYPE (top 10) ---
+MEDIAN_TYPE
+NaN    17247
+Name: count, dtype: int64
+
+--- CONTEXT_CLASS (top 10) ---
+CONTEXT_CLASS
+NaN    17247
+Name: count, dtype: int64
+
+--- INTERSECTION_CONTROL (top 10) ---
+INTERSECTION_CONTROL
+NaN             9471
+Signalized      4457
+Stop Control    3267
+Yield sign        52
+Name: count, dtype: int64
+
+--- FARS_LANDUSE (top 10) ---
+FARS_LANDUSE
+NaN      16930
+Urban      289
+Rural       28
+Name: count, dtype: int64
+
+--- COUNTY_NAME (top 10) ---
+COUNTY_NAME
+Miami-Dade      2454
+Broward         2007
+Pinellas        1505
+Hillsborough    1342
+Palm Beach      1276
+Orange          1149
+Duval            539
+Sarasota         538
+Lee              537
+Volusia          532
+Name: count, dtype: int64
+
+BOOLEAN-ISH COLUMNS FOUND: ['mv_involved', 'S4_IS_AGGRESSIVE_DRIVING', 'S4_IS_ALCOHOL_RELATED', 'S4_IS_DRUG_RELATED', 'S4_IS_DISTRACTED', 'S4_IS_SPEEDING_RELATED', 'S4_IS_AGING_DRIVER', 'S4_IS_TEENAGER_DRIVER', 'S4_IS_UNRESTRAINED', 'CITED']
+mv_involved -> bool {True: 16801, False: 446}
+S4_IS_AGGRESSIVE_DRIVING -> bool {False: 17071, True: 176}
+S4_IS_ALCOHOL_RELATED -> bool {False: 17179, True: 68}
+S4_IS_DRUG_RELATED -> bool {False: 17205, True: 42}
+S4_IS_DISTRACTED -> bool {False: 15954, True: 1293}
+S4_IS_SPEEDING_RELATED -> bool {False: 17204, True: 43}
+S4_IS_AGING_DRIVER -> bool {False: 14600, True: 2647}
+S4_IS_TEENAGER_DRIVER -> bool {False: 16527, True: 720}
+S4_IS_UNRESTRAINED -> bool {False: 17167, True: 80}
+CITED -> bool {False: 11596, True: 5651}
+YEAR range: 2014 - 2026
+HOUR range: 0 - 23
+MONTH range: 1 - 12
+AVG_AADT range: 200.0 - 86500.0
+SHOULDER_WIDTH range: nan - nan
+NUM_THRU_LANES range: nan - nan
