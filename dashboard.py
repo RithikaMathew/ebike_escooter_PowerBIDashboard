@@ -48,7 +48,8 @@ AGE_BAND_ORDER = ["0-14", "15-17", "18-24", "25-34", "35-44", "45-54", "55-64", 
 #     COUNTY_NAME, LIGHT_CONDITION, WEATHER_CONDITION, S4_CRASH_SEVERITY,
 #     LOC_TYPE, DAY_NIGHT, mv_involved, S4_IS_*, CITED, AVG_AADT,
 #     MEDIAN_TYPE, SHOULDER_WIDTH, NUM_THRU_LANES, CONTEXT_CLASS,
-#     INTERSECTION_CONTROL, FARS_LANDUSE, CRASH_TYPE, ROAD_TYPE, POSTED_SPEED
+#     INTERSECTION_CONTROL, FARS_LANDUSE, CRASH_TYPE, ROAD_TYPE, POSTED_SPEED,
+#     MICROMOBILITY_SPEED_MPH
 #   power_bi_export_demographics.csv: REPORT_NUMBER, MODE, SEX, AGE, YEAR,
 #     COUNTY_NAME, S4_CRASH_SEVERITY, DAY_NIGHT, LOC_TYPE
 #   dashboard_meta.csv: metric, value, note
@@ -58,6 +59,7 @@ CRASH_ID_CANDIDATES = ["REPORT_NUMBER", "CRASH_ID", "S4_CRASH_ID", "OFFICIAL_CRA
 CRASH_TYPE_CANDIDATES = ["CRASH_TYPE", "S4_CRASH_TYPE", "Crash_Type"]
 ROAD_TYPE_CANDIDATES = ["ROAD_TYPE", "S4_ROAD_TYPE", "Road_Type", "ROADWAY_TYPE"]
 SPEED_COL_CANDIDATES = ["POSTED_SPEED", "Posted_Speed", "SPEED_LIMIT"]
+MICRO_SPEED_COL_CANDIDATES = ["MICROMOBILITY_SPEED_MPH", "Micromobility_Speed_Mph"]
 # S4_LATITUDE/S4_LONGITUDE preferred -- eda_analysis_combined.py notes these
 # are ~98.5% complete vs. the raw LATITUDE/LONGITUDE columns.
 LAT_COL_CANDIDATES = ["S4_LATITUDE", "LATITUDE"]
@@ -384,6 +386,7 @@ DEMO_GENDER_AVAILABLE = demo_raw is not None and "_GENDER" in demo_raw.columns
 CRASH_TYPE_COL = find_col(df_raw, CRASH_TYPE_CANDIDATES)
 ROAD_TYPE_COL = find_col(df_raw, ROAD_TYPE_CANDIDATES)
 SPEED_COL = find_col(df_raw, SPEED_COL_CANDIDATES)
+MICRO_SPEED_COL = find_col(df_raw, MICRO_SPEED_COL_CANDIDATES)
 LAT_COL = find_col(df_raw, LAT_COL_CANDIDATES)
 LON_COL = find_col(df_raw, LON_COL_CANDIDATES)
 
@@ -1223,6 +1226,24 @@ with tab5:
             )
             fig.update_layout(yaxis_title="Posted Speed Limit (mph)", xaxis_title=None, showlegend=False)
             st.plotly_chart(style_fig(fig, title="Posted Speed Limit Distribution by Mode"), use_container_width=True)
+
+    if MICRO_SPEED_COL:
+        mspd_df = df[pd.to_numeric(df[MICRO_SPEED_COL], errors="coerce").notna()].copy()
+        mspd_df[MICRO_SPEED_COL] = pd.to_numeric(mspd_df[MICRO_SPEED_COL], errors="coerce")
+        if len(mspd_df):
+            fig = px.violin(
+                mspd_df, x="MODE", y=MICRO_SPEED_COL, color="MODE", box=True, points="all",
+                color_discrete_map=MODE_COLORS, category_orders={"MODE": MODES},
+            )
+            fig.update_layout(yaxis_title="Self-Reported Speed (mph)", xaxis_title=None, showlegend=False)
+            st.plotly_chart(
+                style_fig(fig, title=f"Micromobility Speed From Crash Narratives by Mode (n={len(mspd_df):,})"),
+                use_container_width=True,
+            )
+            st.caption(
+                "Extracted from the `micromobility_speed` narrative field. Crashes where the "
+                "narrative gave no numeric speed (or only '0mph' placeholders) are excluded."
+            )
 
     if infra_cols_present:
         infra_items = list(infra_cols_present.items())

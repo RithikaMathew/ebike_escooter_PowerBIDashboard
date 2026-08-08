@@ -1,5 +1,0 @@
-Qwen_Class,Count,Pct_of_Narratives,Source_File,Source_Column,Raw_Values_Used
-Bicycle,5644,27.2%,multilabel_ebike.xlsx + multilabel_RegBike.xlsx,Classification,['Bicyclist']
-E-Bike,6541,31.5%,multilabel_ebike.xlsx + multilabel_RegBike.xlsx,Classification,['E-bike']
-E-Scooter,5358,25.8%,multilabel_ebike.xlsx + multilabel_RegBike.xlsx,Classification,['E-scooter']
-Other,3226,15.5%,multilabel_ebike.xlsx + multilabel_RegBike.xlsx,Classification,['Other']

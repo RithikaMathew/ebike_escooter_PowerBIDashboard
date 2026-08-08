@@ -1,8 +1,0 @@
-NON_MOTORIST_DESCRIPTION_CODE,count,how_used_in_mode_classification
-Bicyclist,11056,-> Bicycle (structural)
-Other Pedestrian,3544,-> Other
-Other Cyclist,2589,-> Other  (NOT E-Bike; could be unicycle/tricycle/cargo bike/etc.)
-Occupant of a Non-Motor Vehicle Transportation Device,2357,-> Other
-Pedestrian,1440,-> Other
-Unknown Type of Non-Motorist,119,-> Other
-Occupant of Motor Vehicle Not in Transport,62,-> Other

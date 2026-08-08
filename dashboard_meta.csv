@@ -6,3 +6,4 @@ bicycle_crashes,5620,Includes both Qwen-narrative-labeled and structurally-class
 ebike_crashes,6353,Identified exclusively via Qwen LLM narrative classification -- Florida crash forms have no structural E-Bike code.
 escooter_crashes,5274,Identified exclusively via Qwen LLM narrative classification -- Florida crash forms have no structural E-Scooter code.
 narrative_labeled_crashes,20769,Crashes with a Qwen-classified crash narrative (multilabel_ebike.xlsx + multilabel_RegBike.xlsx).
+crashes_with_micromobility_speed,770,"Crashes where micromobility_speed had a usable non-zero value for that crash's MODE (see power_bi_export.csv column MICROMOBILITY_SPEED_MPH; '0mph' entries in the source narrative are treated as Not Mentioned and excluded, per Section 11/08f)."
