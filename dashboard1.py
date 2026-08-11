@@ -165,19 +165,9 @@ section[data-testid="stSidebar"] [data-testid="stBaseButton-secondary"],
 section[data-testid="stSidebar"] [data-testid="stBaseButton-secondary"] * {
     color: #12172b !important;
     fill: #12172b !important;
-    background-color: transparent !important;
-    font-weight: 600 !important;
-}
-/* Border goes ONLY on the actual <button> element, never on its
-   descendants (the label wrapper div/span/p inside it) -- putting it on
-   "button *" as well draws a second nested box hugging the text, which is
-   the "double outline" artifact around the All/KSI/Fatal preset buttons. */
-section[data-testid="stSidebar"] button,
-section[data-testid="stSidebar"] .stDownloadButton button,
-section[data-testid="stSidebar"] .stFileUploader button,
-section[data-testid="stSidebar"] [data-testid="stBaseButton-secondary"] {
     background-color: #ffffff !important;
     border: 1px solid #4a5490 !important;
+    font-weight: 600 !important;
 }
 section[data-testid="stSidebar"] button:hover,
 section[data-testid="stSidebar"] button:hover *,
@@ -201,9 +191,7 @@ section[data-testid="stSidebar"] button:focus:not(:active),
 section[data-testid="stSidebar"] [data-testid="stBaseButton-secondary"]:focus,
 section[data-testid="stSidebar"] [data-testid="stBaseButton-secondary"]:focus:not(:active),
 section[data-testid="stSidebar"] [data-testid="stBaseButton-primary"]:focus,
-section[data-testid="stSidebar"] [data-testid="stBaseButton-primary"]:focus:not(:active),
-section[data-testid="stSidebar"] div[data-testid="stButton"],
-section[data-testid="stSidebar"] div[data-testid="stButton"] * {
+section[data-testid="stSidebar"] [data-testid="stBaseButton-primary"]:focus:not(:active) {
     box-shadow: none !important;
     outline: none !important;
 }
@@ -226,16 +214,12 @@ section[data-testid="stSidebar"] [data-testid="stFileUploaderDropzoneInstruction
 }
 
 /* Primary-styled reset button gets a stronger accent fill (including its
-   nested label span, so the fix above doesn't force it back to dark).
-   Border again only on the button itself, not its descendants -- see the
-   comment above the secondary-button rule for why. */
+   nested label span, so the fix above doesn't force it back to dark). */
 section[data-testid="stSidebar"] [data-testid="stBaseButton-primary"],
 section[data-testid="stSidebar"] [data-testid="stBaseButton-primary"] * {
     color: #ffffff !important;
     fill: #ffffff !important;
     background-color: #c0392b !important;
-}
-section[data-testid="stSidebar"] [data-testid="stBaseButton-primary"] {
     border: 1px solid #c0392b !important;
 }
 section[data-testid="stSidebar"] [data-testid="stBaseButton-primary"]:hover,
@@ -534,23 +518,6 @@ with st.sidebar:
     sel_loctype = st.radio("Location Type", ["All", "Intersection", "Segment"], horizontal=True, key=f"filter_loctype_{RS}")
 
     sev_options = [s for s in SEVERITY_ORDER if s in df_raw["S4_CRASH_SEVERITY"].unique()]
-    st.caption(
-        "Quick severity tiers (per the analysis brief's a/b/c pattern -- "
-        "all crashes / KSI / fatal-only). Selecting a preset overwrites the "
-        "checkboxes below; you can still fine-tune them afterward."
-    )
-    ksi_labels = [s for s in ["Fatality", "Serious Injury"] if s in sev_options]
-    fatal_labels = [s for s in ["Fatality"] if s in sev_options]
-    preset_cols = st.columns(3)
-    if preset_cols[0].button("All", use_container_width=True, key=f"sev_preset_all_{RS}"):
-        st.session_state[f"filter_severity_{RS}"] = sev_options
-        st.rerun()
-    if preset_cols[1].button("KSI", use_container_width=True, key=f"sev_preset_ksi_{RS}"):
-        st.session_state[f"filter_severity_{RS}"] = ksi_labels
-        st.rerun()
-    if preset_cols[2].button("Fatal", use_container_width=True, key=f"sev_preset_fatal_{RS}"):
-        st.session_state[f"filter_severity_{RS}"] = fatal_labels
-        st.rerun()
     sel_severity = st.multiselect("Injury Severity", sev_options, default=sev_options, key=f"filter_severity_{RS}")
 
     sel_crash_types = []
@@ -1009,17 +976,12 @@ with tab2:
             df.groupby(["YEAR", "S4_CRASH_SEVERITY"], observed=True).size()
             .reset_index(name="count")
         )
-        # % of that year's crashes, not raw counts -- raw counts conflate the
-        # changing severity MIX with the separate fact that overall crash
-        # volume also rose/fell year to year.
-        sev_yr["pct"] = sev_yr["count"] / sev_yr.groupby("YEAR")["count"].transform("sum") * 100
         fig = px.area(
-            sev_yr, x="YEAR", y="pct", color="S4_CRASH_SEVERITY",
+            sev_yr, x="YEAR", y="count", color="S4_CRASH_SEVERITY",
             color_discrete_map=SEVERITY_COLORS,
             category_orders={"S4_CRASH_SEVERITY": SEVERITY_ORDER},
         )
-        fig.update_layout(yaxis_title="% of that year's crashes")
-        st.plotly_chart(style_fig(fig, title="Severity Mix Over Time (% of Crashes)"), use_container_width=True)
+        st.plotly_chart(style_fig(fig, title="Severity Mix Over Time"), use_container_width=True)
 
     with c4:
         mv_df = df.groupby("MODE", observed=True)["mv_involved"].mean().reindex(MODES).fillna(0) * 100
@@ -1089,32 +1051,26 @@ with tab3:
         light_top = df["LIGHT_CONDITION"].value_counts().nlargest(6).index
         light_df = df[df["LIGHT_CONDITION"].isin(light_top)]
         lm = light_df.groupby(["LIGHT_CONDITION", "MODE"], observed=True).size().reset_index(name="count")
-        # % within mode: raw counts make Bicycle (the largest group) dominate
-        # every bar, which hides whether E-Bike/E-Scooter have a genuinely
-        # different SHAPE of light-condition distribution.
-        mode_totals = df.groupby("MODE", observed=True).size()
-        lm["pct"] = lm.apply(lambda r: r["count"] / mode_totals.get(r["MODE"], 1) * 100, axis=1)
         fig = px.bar(
-            lm, y="LIGHT_CONDITION", x="pct", color="MODE", orientation="h", barmode="group",
+            lm, y="LIGHT_CONDITION", x="count", color="MODE", orientation="h",
             color_discrete_map=MODE_COLORS, category_orders={"MODE": MODES},
         )
-        fig.update_layout(yaxis_title=None, xaxis_title="% of that mode's crashes",
+        fig.update_layout(yaxis_title=None, xaxis_title="Crashes",
                            yaxis={"categoryorder": "total ascending"})
-        st.plotly_chart(style_fig(fig, title="Light Conditions (% Within Mode)"), use_container_width=True)
+        st.plotly_chart(style_fig(fig, title="Light Conditions"), use_container_width=True)
 
     c5, c6 = st.columns(2)
     with c5:
         wthr_top = df["WEATHER_CONDITION"].value_counts().nlargest(5).index
         wthr_df = df[df["WEATHER_CONDITION"].isin(wthr_top)]
         wm = wthr_df.groupby(["WEATHER_CONDITION", "MODE"], observed=True).size().reset_index(name="count")
-        wm["pct"] = wm.apply(lambda r: r["count"] / mode_totals.get(r["MODE"], 1) * 100, axis=1)
         fig = px.bar(
-            wm, y="WEATHER_CONDITION", x="pct", color="MODE", orientation="h", barmode="group",
+            wm, y="WEATHER_CONDITION", x="count", color="MODE", orientation="h",
             color_discrete_map=MODE_COLORS, category_orders={"MODE": MODES},
         )
-        fig.update_layout(yaxis_title=None, xaxis_title="% of that mode's crashes",
+        fig.update_layout(yaxis_title=None, xaxis_title="Crashes",
                            yaxis={"categoryorder": "total ascending"})
-        st.plotly_chart(style_fig(fig, title="Weather Conditions (% Within Mode)"), use_container_width=True)
+        st.plotly_chart(style_fig(fig, title="Weather Conditions"), use_container_width=True)
 
     with c6:
         top_counties = df["COUNTY_NAME"].value_counts().nlargest(15).index
@@ -1205,21 +1161,12 @@ with tab4:
         fig.update_layout(yaxis_title="% crashes with citation", yaxis_range=[0, 110])
         st.plotly_chart(style_fig(fig, title="Citation Rate by Mode"), use_container_width=True)
 
-        cite_yr = df.groupby(["YEAR", "MODE"], observed=True)["CITED"].mean().reset_index()
+        cite_yr = df.groupby("YEAR", observed=True)["CITED"].mean().reset_index()
         cite_yr["CITED"] *= 100
-        fig2 = px.line(
-            cite_yr, x="YEAR", y="CITED", color="MODE", markers=True,
-            color_discrete_map=MODE_COLORS, category_orders={"MODE": MODES},
-        )
-        fig2.update_layout(yaxis_title="% cited", xaxis_title=None)
-        st.plotly_chart(style_fig(fig2, title="Citation Rate Over Time, by Mode", height=280), use_container_width=True)
-        st.caption(
-            "A declining rate here can reflect changing enforcement/charging practice, more "
-            "crashes being self-reported without an officer response, or a reporting-lag "
-            "artifact in the most recent year(s) (citations can be filed after the initial "
-            "report) -- check whether the drop is concentrated in the latest year(s) before "
-            "treating it as a real behavioral trend."
-        )
+        fig2 = px.line(cite_yr, x="YEAR", y="CITED", markers=True)
+        fig2.update_traces(line_color="#2b3f8c")
+        fig2.update_layout(yaxis_title="% cited")
+        st.plotly_chart(style_fig(fig2, title="Citation Rate Over Time", height=280), use_container_width=True)
 
     render_pipeline_figures("tab4")
 
@@ -1259,15 +1206,13 @@ with tab5:
     with c2:
         if len(ictrl_df):
             ic = ictrl_df.groupby(["INTERSECTION_CONTROL", "MODE"], observed=True).size().reset_index(name="count")
-            ictrl_mode_totals = ictrl_df.groupby("MODE", observed=True).size()
-            ic["pct"] = ic.apply(lambda r: r["count"] / ictrl_mode_totals.get(r["MODE"], 1) * 100, axis=1)
             fig = px.bar(
-                ic, y="INTERSECTION_CONTROL", x="pct", color="MODE", orientation="h", barmode="group",
+                ic, y="INTERSECTION_CONTROL", x="count", color="MODE", orientation="h",
                 color_discrete_map=MODE_COLORS, category_orders={"MODE": MODES},
             )
-            fig.update_layout(yaxis_title=None, xaxis_title="% of that mode's crashes (with intersection-control data)",
+            fig.update_layout(yaxis_title=None, xaxis_title="Crashes",
                                yaxis={"categoryorder": "total ascending"})
-            st.plotly_chart(style_fig(fig, title="Intersection Control Type by Mode (% Within Mode)"), use_container_width=True)
+            st.plotly_chart(style_fig(fig, title="Intersection Control Type by Mode"), use_container_width=True)
         else:
             st.info("No intersection-control data in the current filter selection.")
 
@@ -1334,15 +1279,13 @@ with tab5:
             "pipeline doesn't currently map these codes to readable labels."
         )
         rt = road_type_df.groupby([ROAD_TYPE_COL, "MODE"], observed=True).size().reset_index(name="count")
-        rt_mode_totals = road_type_df.groupby("MODE", observed=True).size()
-        rt["pct"] = rt.apply(lambda r: r["count"] / rt_mode_totals.get(r["MODE"], 1) * 100, axis=1)
         fig = px.bar(
-            rt, y=ROAD_TYPE_COL, x="pct", color="MODE", orientation="h", barmode="group",
+            rt, y=ROAD_TYPE_COL, x="count", color="MODE", orientation="h",
             color_discrete_map=MODE_COLORS, category_orders={"MODE": MODES},
         )
-        fig.update_layout(yaxis_title="Trafficway Code", xaxis_title="% of that mode's crashes",
+        fig.update_layout(yaxis_title="Trafficway Code", xaxis_title="Crashes",
                            yaxis={"categoryorder": "total ascending"})
-        st.plotly_chart(style_fig(fig, title="Road Type (Trafficway Code) by Mode (% Within Mode)"), use_container_width=True)
+        st.plotly_chart(style_fig(fig, title="Road Type (Trafficway Code) by Mode"), use_container_width=True)
 
     render_pipeline_figures("tab5")
 
@@ -1405,40 +1348,28 @@ with tab6:
                 st.info("No recognizable gender column found in the demographics file.")
 
         if DEMO_AGE_AVAILABLE and has_mode:
+            c3, c4 = st.columns(2)
             sev_col = find_col(demo, ["S4_CRASH_SEVERITY", "SEVERITY", "INJURY_SEVERITY"])
-            if sev_col:
-                st.markdown("##### Age Distribution by Injury Severity, by Mode")
-                st.caption(
-                    "Shown as three separate charts (one per mode) rather than one combined "
-                    "chart, since patterns like 'people in fatal crashes skew older' are easier "
-                    "to see within a single mode than averaged across all three."
-                )
-                age_sev_cols = st.columns(3)
-                for slot, mode in zip(age_sev_cols, MODES):
-                    with slot:
-                        sub = demo[(demo[demo_mode_col] == mode) & demo["_AGE"].notna() & demo[sev_col].notna()]
-                        if len(sub) < 5:
-                            st.info(f"Not enough {mode} records with age + severity in this filter.")
-                            continue
-                        fig = px.violin(
-                            sub, x=sev_col, y="_AGE", color=sev_col, box=True, points=False,
-                            color_discrete_map=SEVERITY_COLORS, category_orders={sev_col: SEVERITY_ORDER},
-                        )
-                        fig.update_layout(yaxis_title="Age", xaxis_title=None, showlegend=False)
-                        st.plotly_chart(
-                            style_fig(fig, title=f"{mode} (n={len(sub):,})", height=340),
-                            use_container_width=True,
-                        )
+            with c3:
+                if sev_col:
+                    fig = px.violin(
+                        demo[demo["_AGE"].notna() & demo[sev_col].notna()],
+                        x=sev_col, y="_AGE", color=sev_col, box=True, points=False,
+                        color_discrete_map=SEVERITY_COLORS, category_orders={sev_col: SEVERITY_ORDER},
+                    )
+                    fig.update_layout(yaxis_title="Age", xaxis_title=None, showlegend=False)
+                    st.plotly_chart(style_fig(fig, title="Age Distribution by Injury Severity"), use_container_width=True)
 
-            if sev_col and DEMO_GENDER_AVAILABLE:
-                gm = demo.groupby([demo_mode_col, "_GENDER"], observed=True).size().reset_index(name="count")
-                gm["pct"] = gm["count"] / gm.groupby(demo_mode_col)["count"].transform("sum") * 100
-                fig = px.bar(
-                    gm, x=demo_mode_col, y="pct", color="_GENDER",
-                    color_discrete_map=GENDER_COLORS, category_orders={demo_mode_col: MODES},
-                )
-                fig.update_layout(yaxis_title="% of people", xaxis_title=None, barmode="stack")
-                st.plotly_chart(style_fig(fig, title="Gender Mix by Mode"), use_container_width=True)
+            with c4:
+                if sev_col and DEMO_GENDER_AVAILABLE:
+                    gm = demo.groupby([demo_mode_col, "_GENDER"], observed=True).size().reset_index(name="count")
+                    gm["pct"] = gm["count"] / gm.groupby(demo_mode_col)["count"].transform("sum") * 100
+                    fig = px.bar(
+                        gm, x=demo_mode_col, y="pct", color="_GENDER",
+                        color_discrete_map=GENDER_COLORS, category_orders={demo_mode_col: MODES},
+                    )
+                    fig.update_layout(yaxis_title="% of people", xaxis_title=None, barmode="stack")
+                    st.plotly_chart(style_fig(fig, title="Gender Mix by Mode"), use_container_width=True)
 
         st.caption(
             f"Demographics reflect **{len(demo):,}** person-level records "
