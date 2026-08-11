@@ -1281,6 +1281,8 @@ with tab5:
             )
             fig.update_layout(yaxis_title="Posted Speed Limit (mph)", xaxis_title=None, showlegend=False)
             st.plotly_chart(style_fig(fig, title="Posted Speed Limit Distribution by Mode"), use_container_width=True)
+        else:
+            st.info("No Posted Speed Limit data in the current filter selection.")
 
     if MICRO_SPEED_COL:
         mspd_df = df[pd.to_numeric(df[MICRO_SPEED_COL], errors="coerce").notna()].copy()
@@ -1299,6 +1301,21 @@ with tab5:
                 "Extracted from the `micromobility_speed` narrative field. Crashes where the "
                 "narrative gave no numeric speed (or only '0mph' placeholders) are excluded."
             )
+        else:
+            total_with_speed = pd.to_numeric(df_raw[MICRO_SPEED_COL], errors="coerce").notna().sum()
+            st.info(
+                f"No Micromobility Speed data in the current filter selection "
+                f"({total_with_speed:,} crash(es) in the full dataset have a value -- "
+                f"try widening the sidebar filters, e.g. reset Injury Severity to 'All' or widen the date range)."
+            )
+    elif SPEED_COL:
+        # Only mention the missing column once, right next to the sibling chart
+        # that DID find its column -- avoids a confusing silent gap here.
+        st.caption(
+            "Micromobility Speed (self-reported speed from crash narratives) isn't present in "
+            "the currently loaded `power_bi_export.csv` -- re-run `eda_analysis_combined.py` and "
+            "reload the CSV to pick it up."
+        )
 
     if infra_cols_present:
         infra_items = list(infra_cols_present.items())
