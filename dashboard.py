@@ -326,8 +326,18 @@ DEFAULT_NARRATIVE_PATH = "narrative_text_export.csv"
 DEFAULT_HOTSPOT_PATH = "spatiotemporal_hotspots_by_mode.csv"
 
 
+def _mtime_key(path_or_buffer):
+    """Cache-busting key: on-disk files are keyed by mtime so an edited/
+    replaced CSV invalidates the cache even if the process never restarts.
+    Uploaded file objects don't need this -- Streamlit already gives each
+    upload a distinct identity."""
+    if isinstance(path_or_buffer, str) and os.path.exists(path_or_buffer):
+        return os.path.getmtime(path_or_buffer)
+    return None
+
+
 @st.cache_data
-def load_data(path_or_buffer):
+def load_data(path_or_buffer, _mtime=None):
     df = pd.read_csv(path_or_buffer)
     df["MODE"] = pd.Categorical(df["MODE"], categories=MODES, ordered=True)
     if "S4_CRASH_SEVERITY" in df.columns:
@@ -340,7 +350,7 @@ def load_data(path_or_buffer):
 
 
 @st.cache_data
-def load_demographics(path_or_buffer):
+def load_demographics(path_or_buffer, _mtime=None):
     """Person-level demographics (age/gender), one row per active-mode
     person involved in a crash. Schema is flexible -- see find_col()."""
     ddf = pd.read_csv(path_or_buffer)
@@ -357,7 +367,7 @@ def load_demographics(path_or_buffer):
 
 
 @st.cache_data
-def load_meta(path_or_buffer):
+def load_meta(path_or_buffer, _mtime=None):
     """Pipeline funnel counts (e.g. raw records -> geocoded -> matched ->
     final export) used on the About tab. Expected as a simple two-column
     CSV: a stage/step label column and a count column, but we degrade
@@ -366,7 +376,7 @@ def load_meta(path_or_buffer):
 
 
 @st.cache_data
-def load_narratives(path_or_buffer):
+def load_narratives(path_or_buffer, _mtime=None):
     """Per-crash narrative text (Signal4Data crashes with a Qwen-classified
     narrative only -- the S4_Crash_bicycle-only population has no narrative
     text). Powers the interactive keyword/text-mining tab."""
@@ -379,7 +389,7 @@ def load_narratives(path_or_buffer):
 
 
 @st.cache_data
-def load_hotspots(path_or_buffer):
+def load_hotspots(path_or_buffer, _mtime=None):
     """Precomputed DBSCAN spatiotemporal cluster table (one row per
     cluster), from eda_analysis_combined.py section 09d."""
     return pd.read_csv(path_or_buffer)
@@ -407,7 +417,7 @@ with st.sidebar:
         hotspot_src = file_input(f"Upload {DEFAULT_HOTSPOT_PATH}", DEFAULT_HOTSPOT_PATH, "hotspot_upload")
 
 if main_src is not None:
-    df_raw = load_data(main_src)
+    df_raw = load_data(main_src, _mtime=_mtime_key(main_src))
 else:
     st.info(
         f"\U0001F4C2 **Waiting on crash data.** This dashboard needs "
@@ -418,10 +428,10 @@ else:
     )
     st.stop()
 
-demo_raw = load_demographics(demo_src) if demo_src is not None else None
-meta_raw = load_meta(meta_src) if meta_src is not None else None
-narrative_raw = load_narratives(narrative_src) if narrative_src is not None else None
-hotspot_raw = load_hotspots(hotspot_src) if hotspot_src is not None else None
+demo_raw = load_demographics(demo_src, _mtime=_mtime_key(demo_src)) if demo_src is not None else None
+meta_raw = load_meta(meta_src, _mtime=_mtime_key(meta_src)) if meta_src is not None else None
+narrative_raw = load_narratives(narrative_src, _mtime=_mtime_key(narrative_src)) if narrative_src is not None else None
+hotspot_raw = load_hotspots(hotspot_src, _mtime=_mtime_key(hotspot_src)) if hotspot_src is not None else None
 
 MAIN_CRASH_ID_COL = find_col(df_raw, CRASH_ID_CANDIDATES)
 DEMO_CRASH_ID_COL = find_col(demo_raw, CRASH_ID_CANDIDATES) if demo_raw is not None else None
