@@ -10,9 +10,10 @@ eda_analysis_combined.py pipeline) in the same folder as this script,
 or upload it via the sidebar.
 """
 
+import glob
 import os
 import re
-import glob
+from collections import Counter
 import numpy as np
 import pandas as pd
 import plotly.express as px
@@ -71,16 +72,17 @@ INFRA_COL_LABELS = {
     "CONTEXT_CLASS": "Context Class",
 }
 META_METRIC_LABELS = {
-    "query_params_report_numbers": "Report numbers originally queried",
-    "crash_event_total_crashes": "Total crashes in crash_event.csv (all types)",
+    "query_params_report_numbers": "Signal4Data report numbers originally queried",
+    "crash_event_total_crashes": "Total crashes in combined crash_event (S4_Crash_bicycle + Signal4Data)",
+    "bicycle_population_s4_crash_bicycle": "Bicycle crashes in source population (S4_Crash_bicycle)",
     "active_mode_crashes": "Active-mode crashes (this dashboard's scope)",
     "bicycle_crashes": "Bicycle crashes",
     "ebike_crashes": "E-Bike crashes",
     "escooter_crashes": "E-Scooter crashes",
-    "narrative_labeled_crashes": "Crashes with Qwen narrative label",
+    "narrative_labeled_crashes": "Signal4Data crashes with Qwen narrative label",
 }
 META_FUNNEL_ORDER = [
-    "query_params_report_numbers", "crash_event_total_crashes", "active_mode_crashes",
+    "crash_event_total_crashes", "active_mode_crashes",
 ]
 
 
@@ -320,6 +322,8 @@ st.markdown(CUSTOM_CSS, unsafe_allow_html=True)
 DEFAULT_PATH = "power_bi_export.csv"
 DEFAULT_DEMO_PATH = "power_bi_export_demographics.csv"
 DEFAULT_META_PATH = "dashboard_meta.csv"
+DEFAULT_NARRATIVE_PATH = "narrative_text_export.csv"
+DEFAULT_HOTSPOT_PATH = "spatiotemporal_hotspots_by_mode.csv"
 
 
 @st.cache_data
@@ -361,6 +365,26 @@ def load_meta(path_or_buffer):
     return pd.read_csv(path_or_buffer)
 
 
+@st.cache_data
+def load_narratives(path_or_buffer):
+    """Per-crash narrative text (Signal4Data crashes with a Qwen-classified
+    narrative only -- the S4_Crash_bicycle-only population has no narrative
+    text). Powers the interactive keyword/text-mining tab."""
+    ndf = pd.read_csv(path_or_buffer)
+    if "REPORT_NUMBER" in ndf.columns:
+        ndf["REPORT_NUMBER"] = ndf["REPORT_NUMBER"].astype(str)
+    if "NARRATIVE_TEXT" in ndf.columns:
+        ndf["NARRATIVE_TEXT"] = ndf["NARRATIVE_TEXT"].fillna("").astype(str)
+    return ndf
+
+
+@st.cache_data
+def load_hotspots(path_or_buffer):
+    """Precomputed DBSCAN spatiotemporal cluster table (one row per
+    cluster), from eda_analysis_combined.py section 09d."""
+    return pd.read_csv(path_or_buffer)
+
+
 def file_input(label, default_path, key):
     """Sidebar uploader with a friendly fallback: use the file sitting next
     to the script if present, else let the user upload it, else skip
@@ -379,6 +403,8 @@ with st.sidebar:
     with st.expander("Optional: demographics & pipeline info"):
         demo_src = file_input(f"Upload {DEFAULT_DEMO_PATH}", DEFAULT_DEMO_PATH, "demo_upload")
         meta_src = file_input(f"Upload {DEFAULT_META_PATH}", DEFAULT_META_PATH, "meta_upload")
+        narrative_src = file_input(f"Upload {DEFAULT_NARRATIVE_PATH}", DEFAULT_NARRATIVE_PATH, "narrative_upload")
+        hotspot_src = file_input(f"Upload {DEFAULT_HOTSPOT_PATH}", DEFAULT_HOTSPOT_PATH, "hotspot_upload")
 
 if main_src is not None:
     df_raw = load_data(main_src)
@@ -394,6 +420,8 @@ else:
 
 demo_raw = load_demographics(demo_src) if demo_src is not None else None
 meta_raw = load_meta(meta_src) if meta_src is not None else None
+narrative_raw = load_narratives(narrative_src) if narrative_src is not None else None
+hotspot_raw = load_hotspots(hotspot_src) if hotspot_src is not None else None
 
 MAIN_CRASH_ID_COL = find_col(df_raw, CRASH_ID_CANDIDATES)
 DEMO_CRASH_ID_COL = find_col(demo_raw, CRASH_ID_CANDIDATES) if demo_raw is not None else None
@@ -427,6 +455,13 @@ DRIVER_FLAG_LABELS = {
 # If the folder isn't present (e.g. running this dashboard somewhere the
 # results/ output wasn't copied), we just skip it quietly -- no error, no
 # text box asking the user to point at it.
+#
+# NOTE: this is NOT purely a legacy fallback -- some pipeline figures (e.g.
+# 06b/06c/06d in 06_crash_typing) are built from columns that never get
+# merged into power_bi_export.csv, so they have no interactive equivalent
+# in this dashboard and can only be shown as the static PNG the pipeline
+# already produced. Don't remove this block on the assumption "everything
+# already has an interactive chart" without checking column-by-column first.
 # ============================================================================
 def _find_figures_dir():
     here = os.path.dirname(os.path.abspath(__file__)) if "__file__" in globals() else "."
@@ -447,14 +482,33 @@ def _label_from_filename(fname):
 
 @st.cache_data
 def _load_pipeline_figures(fig_dir):
-    """subfolder name -> sorted list of PNG paths."""
+    """subfolder name -> sorted list of PNG paths.
+
+    Filenames in PIPELINE_FIGURES_WITH_INTERACTIVE_EQUIVALENT are skipped
+    here -- those specific PNGs now have a live Plotly chart built from
+    power_bi_export.csv elsewhere in this file, so showing the static PNG
+    too would just be a duplicate. Everything else in these folders still
+    has no interactive equivalent and is shown as-is.
+    """
     if not fig_dir:
         return {}
     by_folder = {}
     for p in sorted(glob.glob(os.path.join(fig_dir, "**", "*.png"), recursive=True)):
+        stem = os.path.splitext(os.path.basename(p))[0]
+        if stem in PIPELINE_FIGURES_WITH_INTERACTIVE_EQUIVALENT:
+            continue
         by_folder.setdefault(os.path.basename(os.path.dirname(p)), []).append(p)
     return by_folder
 
+
+# Filenames (no extension) that now have a matching interactive chart built
+# from power_bi_export.csv, so the static PNG fallback should skip them.
+PIPELINE_FIGURES_WITH_INTERACTIVE_EQUIVALENT = {
+    "06a_crash_group_distribution",   # Crash Typing chart (CRASH_GROUP), tab7
+    "06b_crash_type_descriptions",    # Crash Type Description chart (CRASH_TYPE_DESC), tab7
+    "06d_contributing_factors",       # Contributing Factors chart (ROAD_/ENVIRONMENT_CIRCUMSTANCE), tab7
+    "10b_distraction_type_by_mode",   # Driver Distraction Type chart (DISTRACTION_TYPE), tab4
+}
 
 PIPELINE_FIGURES = _load_pipeline_figures(_find_figures_dir())
 
@@ -466,13 +520,14 @@ PIPELINE_FIGURES = _load_pipeline_figures(_find_figures_dir())
 # lives on the About tab alongside the classification-methodology figures
 # rather than implying it's part of the Bicycle/E-Bike/E-Scooter totals.
 PIPELINE_FIGURE_MAP = {
-    "tab0": ["08_qwen", "07_text_mining", "12_pedestrian_context"],
+    "tab0": ["12_pedestrian_context"],
     "tab1": ["01_overview"],
-    "tab2": ["05_severity", "06_crash_typing"],
+    "tab2": ["05_severity"],
     "tab3": ["03_when", "04_where", "09_latlon"],
     "tab4": ["10_driver_behavior", "11_violations"],
     "tab5": ["13_roadway_infrastructure"],
     "tab6": ["02_who"],
+    "tab7": ["06_crash_typing", "07_text_mining", "08_qwen"],
 }
 
 
@@ -739,7 +794,7 @@ def style_fig(fig, height=380, title=None):
 # ============================================================================
 # TABS
 # ============================================================================
-tab0, tab1, tab2, tab3, tab4, tab5, tab6 = st.tabs([
+tab0, tab1, tab2, tab3, tab4, tab5, tab6, tab7 = st.tabs([
     "\u2139\uFE0F About This Dashboard",
     "\U0001F4C8 Overview & Trends",
     "\U0001F6A8 Severity & Outcomes",
@@ -747,6 +802,7 @@ tab0, tab1, tab2, tab3, tab4, tab5, tab6 = st.tabs([
     "\U0001F464 Driver Behavior & Citations",
     "\U0001F6E3 Roadway Infrastructure",
     "\U0001F9D1 Demographics",
+    "\U0001F4DD Narrative, Typing & Hotspots",
 ])
 
 # ---------------------------------------------------------------------------
@@ -758,7 +814,8 @@ with tab0:
         """
 This dashboard tracks **crashes involving people on bicycles, e-bikes, and
 e-scooters** ("active-mode" or "micromobility" road users) in Florida,
-built from **Signal4 crash reports** matched against **FDOT roadway
+built from **the S4_Crash_bicycle population** (Bicycle) plus **Signal4
+crash reports** (E-Bike, E-Scooter, Other) matched against **FDOT roadway
 tables**. It's produced by the Just & Green Transportation Lab at the
 University of Florida as part of a Complete Streets road-safety analysis.
 
@@ -781,37 +838,41 @@ profile differs from conventional bicycles is central to this project.
     st.markdown("## How each mode is classified")
     st.markdown(
         """
+- **Bicycle** -- sourced from **S4_Crash_bicycle**, a larger, dedicated
+  bicycle-crash population (bigger N than relying on Signal4Data alone).
+  Every row in that source is already a bicycle crash, so no structural
+  crash-form code is needed to identify it. The only exception: if Qwen's
+  narrative classifier says a specific crash is actually **E-Bike** or
+  **E-Scooter**, that overrides the Bicycle label (see below).
 - **E-Bike / E-Scooter** -- identified **exclusively** through Qwen LLM
-  narrative classification. Florida crash forms have no structural code for
-  either, so if the narrative wasn't classified, the crash can't be
-  identified as E-Bike/E-Scooter.
-- **Bicycle** -- identified through **both** Qwen narrative classification
-  **and** structural crash-form codes (`S4_CRASH_TYPE` /
-  `NON_MOTORIST_DESCRIPTION_CODE`). Bicycle has a structural code Florida
-  crash forms already capture, so it isn't as dependent on narrative
-  classification as the other two modes.
+  narrative classification of Signal4Data crash narratives. Florida crash
+  forms have no structural code for either, so if the narrative wasn't
+  classified, the crash can't be identified as E-Bike/E-Scooter. This Qwen
+  narrative call is authoritative even when a crash also shows up in the
+  S4_Crash_bicycle population.
         """
     )
 
     st.markdown("## Why the numbers don't match the raw crash count")
     st.markdown(
         """
-If you started from a raw pull of report numbers (for example **20,769**)
-and this dashboard shows a smaller number, that's expected -- it's not
-missing data, it's the pipeline doing its job across three stages:
+This dashboard's active-mode export is built from **two source systems**,
+not one flat pull, so a raw report-number count from either source alone
+won't match what you see here:
         """
     )
     st.markdown(
         """
-- **Query pull &rarr; crash_event.csv** -- not every REPORT_NUMBER
-  originally queried ends up in the final `crash_event.csv` extract (some
-  records fail to resolve on the FDOT/Signal4 side).
-- **crash_event.csv &rarr; active-mode classification** -- `crash_event.csv`
-  contains *all* crash types (bicycle, pedestrian, single-vehicle, MV-only,
-  animal, etc.). Only crashes classified as **Bicycle**, **E-Bike**, or
-  **E-Scooter** make it into this dashboard's scope; everything else is
-  labeled **Other** and dropped. This step is where most of the narrowing
-  happens.
+- **S4_Crash_bicycle** -- a dedicated, larger bicycle-crash population.
+  Every record here is a bicycle crash; the only thing that can move a
+  record out of Bicycle is a Qwen narrative override to E-Bike/E-Scooter.
+- **Signal4Data** -- a separate crash-report pull covering *all* crash
+  types (bicycle, pedestrian, single-vehicle, MV-only, animal, etc). It
+  supplies E-Bike, E-Scooter, and everything classified **Other**.
+- **Overlap** -- the same physical crash can legitimately appear in both
+  source systems. When a REPORT_NUMBER shows up in both, it's counted
+  **once**: Qwen's E-Bike/E-Scooter call wins if present, otherwise it's
+  counted as Bicycle from S4_Crash_bicycle. Nothing is double-counted.
 - **Final export** -- whatever's left after mode classification is what's
   loaded into this dashboard right now.
         """
@@ -820,41 +881,62 @@ missing data, it's the pipeline doing its job across three stages:
     st.markdown("### What actually happens at the classification step")
     st.markdown(
         """
-Every crash in `crash_event.csv` runs through one classification rule, in
-this order:
+Every crash in the combined crash_event table runs through one
+classification rule, in this order:
 
-1. **Qwen narrative label exists** (from `multilabel_ebike.xlsx` +
-   `multilabel_RegBike.xlsx`) -- this is authoritative. Whatever Qwen
-   labeled it (Bicycle / E-Bike / E-Scooter / Other) is used as-is.
-2. **No Qwen label, but structurally a bicycle** -- `S4_CRASH_TYPE ==
-   'Bicycle'` in `crash_event.csv`, or a `NON_MOTORIST_DESCRIPTION_CODE`
-   of `'Bicyclist'` in `non_motorist.csv` &rarr; classified as **Bicycle**.
-3. **Everything else &rarr; "Other"**, including:
-   - pedestrian-only, single-vehicle, and motor-vehicle-only crashes that
-     were always in `crash_event.csv`,
-   - non-motorist records coded `'Other Cyclist'` (4,324 rows) -- these are
-     deliberately **not** guessed into E-Bike or E-Scooter, since that code
-     also covers unicycles, tricycles, cargo bikes, and para-cycles, and
-     there isn't enough evidence to know which.
+1. **Qwen narrative says E-Bike or E-Scooter** (from `multilabel_ebike.xlsx`
+   + `multilabel_RegBike.xlsx`, Signal4Data narratives) -- authoritative,
+   even if that REPORT_NUMBER is also present in S4_Crash_bicycle.
+2. **REPORT_NUMBER is in S4_Crash_bicycle** (and wasn't overridden above)
+   &rarr; classified as **Bicycle**.
+3. **Everything else &rarr; "Other"**, including pedestrian-only,
+   single-vehicle, and motor-vehicle-only crashes from Signal4Data, plus
+   non-motorist records coded `'Other Cyclist'` -- these are deliberately
+   **not** guessed into E-Bike or E-Scooter, since that code also covers
+   unicycles, tricycles, cargo bikes, and para-cycles, and there isn't
+   enough evidence to know which.
 
-So the gap between **crash_event.csv (20,437)** and this dashboard's
-**active-mode export (17,247)** -- about 3,190 crashes -- isn't missing or
-lost data. It's every crash that landed in "Other" at this step: crashes
-that were never bicycle/e-bike/e-scooter to begin with, plus ambiguous
-cyclist codes the pipeline chose not to guess on. E-Bike and E-Scooter can
-**only** come from an explicit Qwen narrative match -- there's no
-structural fallback for those two modes, since Florida crash forms have no
-dedicated code for either.
+So the gap between the combined **crash_event** total and this dashboard's
+**active-mode export** isn't missing or lost data -- it's every crash that
+landed in "Other" at this step, mostly pedestrian-only and MV-only crashes
+from Signal4Data that were never bicycle/e-bike/e-scooter to begin with.
+E-Bike and E-Scooter can **only** come from an explicit Qwen narrative
+match -- there's no structural fallback for those two modes, since Florida
+crash forms have no dedicated code for either.
         """
     )
 
     if meta_raw is not None:
-        st.markdown("### Pipeline funnel (from `dashboard_meta.csv`)")
         metric_col = find_col(meta_raw, ["metric"]) or meta_raw.columns[0]
         value_col = find_col(meta_raw, ["value"]) or (meta_raw.columns[1] if len(meta_raw.columns) > 1 else meta_raw.columns[0])
         note_col = find_col(meta_raw, ["note"])
 
         m = meta_raw.set_index(metric_col)[value_col]
+
+        # Two source inputs merge into crash_event now (S4_Crash_bicycle +
+        # Signal4Data), so they're shown as parallel KPI cards rather than
+        # forced into a single linear funnel -- a funnel implies each step
+        # narrows the one before it, which no longer holds once two separate
+        # source populations combine.
+        source_metrics = [s for s in ["bicycle_population_s4_crash_bicycle", "query_params_report_numbers"] if s in m.index]
+        if source_metrics:
+            st.markdown("### Two source populations")
+            sc = st.columns(len(source_metrics))
+            for col, s in zip(sc, source_metrics):
+                col.markdown(
+                    f"""<div class="kpi-card">
+                        <div class="kpi-label">{META_METRIC_LABELS.get(s, s)}</div>
+                        <div class="kpi-value">{int(m[s]):,}</div>
+                    </div>""",
+                    unsafe_allow_html=True,
+                )
+            st.caption(
+                "S4_Crash_bicycle is the larger, dedicated bicycle population. "
+                "Signal4Data supplies E-Bike/E-Scooter (via Qwen narrative) and "
+                "everything else. They merge into one combined crash_event table below."
+            )
+
+        st.markdown("### Pipeline funnel (from `dashboard_meta.csv`)")
         funnel_steps = [s for s in META_FUNNEL_ORDER if s in m.index]
         # Final export count isn't a row in dashboard_meta.csv itself --
         # it's however many rows made it into the currently loaded
@@ -893,9 +975,9 @@ dedicated code for either.
             No <code>{DEFAULT_META_PATH}</code> loaded yet, so the exact
             step-by-step funnel isn't shown here -- add it under the
             <b>Data Source</b> panel in the sidebar to see records retained
-            at each pipeline stage (query pulled &rarr; crash_event.csv
-            &rarr; active-mode classified &rarr; final export). In the
-            meantime, the current loaded export contains
+            at each pipeline stage (S4_Crash_bicycle + Signal4Data query pulled
+            &rarr; combined crash_event &rarr; active-mode classified &rarr;
+            final export). In the meantime, the current loaded export contains
             <b>{len(df_raw):,}</b> crash records after all pipeline steps.
             </div>""",
             unsafe_allow_html=True,
@@ -904,21 +986,29 @@ dedicated code for either.
     st.markdown("## Data sources")
     st.markdown(
         """
+- **S4_Crash_bicycle** -- the larger, dedicated bicycle-crash population.
+  Source of every Bicycle-mode record, minus any Qwen E-Bike/E-Scooter
+  override.
 - **Signal4** crash report tables (crash-level fields: date/time, location,
-  severity, contributing factors, citations)
+  severity, contributing factors, citations) -- source of E-Bike, E-Scooter,
+  and Other.
 - **FDOT** roadway tables (AADT, intersection control, functional
-  classification -- matched by location where available)
+  classification -- matched by location where available), pulled from
+  whichever source system (S4_Crash_bicycle or Signal4Data) each crash
+  came from.
 - **Non-motorist person-level records** (age, gender, and other
   demographics of the person on the bicycle/e-bike/e-scooter, when a
   demographics export is loaded)
         """
     )
 
+
     render_pipeline_figures("tab0")
 
 # ---------------------------------------------------------------------------
 # TAB 1 -- OVERVIEW & TRENDS
 # ---------------------------------------------------------------------------
+
 with tab1:
     c1, c2 = st.columns([1, 1.4])
 
@@ -963,11 +1053,13 @@ with tab1:
         ))
         st.plotly_chart(style_fig(fig, title="Crashes by Hour of Day"), use_container_width=True)
 
+
     render_pipeline_figures("tab1")
 
 # ---------------------------------------------------------------------------
 # TAB 2 -- SEVERITY & OUTCOMES
 # ---------------------------------------------------------------------------
+
 with tab2:
     c1, c2 = st.columns([1.3, 1])
 
@@ -1045,11 +1137,13 @@ with tab2:
             unsafe_allow_html=True,
         )
 
+
     render_pipeline_figures("tab2")
 
 # ---------------------------------------------------------------------------
 # TAB 3 -- WHEN & WHERE
 # ---------------------------------------------------------------------------
+
 with tab3:
     c1, c2 = st.columns(2)
     with c1:
@@ -1168,11 +1262,13 @@ with tab3:
             unsafe_allow_html=True,
         )
 
+
     render_pipeline_figures("tab3")
 
 # ---------------------------------------------------------------------------
 # TAB 4 -- DRIVER BEHAVIOR & CITATIONS
 # ---------------------------------------------------------------------------
+
 with tab4:
     c1, c2 = st.columns([1.4, 1])
 
@@ -1221,11 +1317,49 @@ with tab4:
             "treating it as a real behavioral trend."
         )
 
+    st.markdown("---")
+    st.markdown("## Driver Distraction Type")
+    if "DISTRACTION_TYPE" in df.columns and df["DISTRACTION_TYPE"].notna().any():
+        dist_df = df[df["DISTRACTION_TYPE"].notna()].copy()
+        dist_df = dist_df[~dist_df["DISTRACTION_TYPE"].astype(str).str.lower().str.contains("not distracted")]
+        if len(dist_df):
+            dist_top_n = st.slider("Number of distraction types to show", 5, 15, 8, key="distraction_topn")
+            dist_totals = dist_df["DISTRACTION_TYPE"].value_counts().nlargest(dist_top_n).index
+            dsub2 = dist_df[dist_df["DISTRACTION_TYPE"].isin(dist_totals)]
+            dm3 = dsub2.groupby(["DISTRACTION_TYPE", "MODE"], observed=True).size().reset_index(name="count")
+            fig = px.bar(
+                dm3, y="DISTRACTION_TYPE", x="count", color="MODE", orientation="h",
+                color_discrete_map=MODE_COLORS, category_orders={"MODE": MODES},
+            )
+            fig.update_layout(
+                yaxis_title=None, xaxis_title="Crashes",
+                yaxis={"categoryorder": "total ascending"}, barmode="stack",
+            )
+            st.plotly_chart(
+                style_fig(fig, title=f"Driver Distraction Type (top {dist_top_n}, by mode, excl. 'Not Distracted')", height=440),
+                use_container_width=True,
+            )
+            st.caption(
+                "Source: `driver.csv` (`DRIVER_DISTRACTION_CODE`) -- the specific distraction "
+                "behind the Distracted Driving flag above. 'Not Distracted' is excluded so the "
+                "chart focuses on actual distraction types. When a crash has more than one "
+                "driver record, the non-'Not Distracted' code is preferred."
+            )
+        else:
+            st.info("No distraction-type records (excl. 'Not Distracted') in the current filter selection.")
+    else:
+        st.info(
+            "No `DISTRACTION_TYPE` column in the loaded export. Re-run "
+            "`eda_analysis_combined.py` to pick it up in `power_bi_export.csv`."
+        )
+
+
     render_pipeline_figures("tab4")
 
 # ---------------------------------------------------------------------------
 # TAB 5 -- ROADWAY INFRASTRUCTURE
 # ---------------------------------------------------------------------------
+
 with tab5:
     aadt_df = df[df["AVG_AADT"].notna()]
     ictrl_df = df[df["INTERSECTION_CONTROL"].notna()]
@@ -1361,11 +1495,13 @@ with tab5:
                            yaxis={"categoryorder": "total ascending"})
         st.plotly_chart(style_fig(fig, title="Road Type (Trafficway Code) by Mode (% Within Mode)"), use_container_width=True)
 
+
     render_pipeline_figures("tab5")
 
 # ---------------------------------------------------------------------------
 # TAB 6 -- DEMOGRAPHICS
 # ---------------------------------------------------------------------------
+
 with tab6:
     if demo is None or demo.empty:
         st.markdown(
@@ -1463,6 +1599,282 @@ with tab6:
         )
 
     render_pipeline_figures("tab6")
+
+# ---------------------------------------------------------------------------
+# TAB 7 -- NARRATIVE TEXT MINING, CRASH TYPING, QWEN CLASSIFICATION, HOTSPOTS
+#   Built live from the currently filtered `df` (+ narrative_text_export.csv
+#   / spatiotemporal_hotspots_by_mode.csv when loaded) so every chart here
+#   responds to the sidebar filters and mode selection, instead of being a
+#   fixed PNG pulled from results/figures/.
+# ---------------------------------------------------------------------------
+with tab7:
+    st.markdown("## Crash Typing")
+    if "CRASH_GROUP" in df.columns and df["CRASH_GROUP"].notna().any():
+        top_n = st.slider("Number of crash-type groups to show", 5, 20, 12, key="typing_topn")
+        grp_totals = df["CRASH_GROUP"].value_counts().nlargest(top_n).index
+        gsub = df[df["CRASH_GROUP"].isin(grp_totals)]
+        gm = gsub.groupby(["CRASH_GROUP", "MODE"], observed=True).size().reset_index(name="count")
+        fig = px.bar(
+            gm, y="CRASH_GROUP", x="count", color="MODE", orientation="h",
+            color_discrete_map=MODE_COLORS, category_orders={"MODE": MODES},
+        )
+        fig.update_layout(
+            yaxis_title=None, xaxis_title="Crashes",
+            yaxis={"categoryorder": "total ascending"}, barmode="stack",
+        )
+        st.plotly_chart(
+            style_fig(fig, title=f"Crash Scenario / Type (top {top_n}, by mode)", height=480),
+            use_container_width=True,
+        )
+        st.caption(
+            "Source: `bicycle_typing_20.csv` (`S4_CRASH_GROUP_DESCRIPTION`) -- describes "
+            "what happened (e.g. who failed to yield), not road/environment conditions. "
+            "Respects every sidebar filter, including the Mode selector."
+        )
+    else:
+        st.info(
+            "No `CRASH_GROUP` column in the loaded export. Re-run "
+            "`eda_analysis_combined.py` to pick it up in `power_bi_export.csv`."
+        )
+
+    if "CRASH_TYPE_DESC" in df.columns and df["CRASH_TYPE_DESC"].notna().any():
+        desc_top_n = st.slider("Number of crash-type descriptions to show", 5, 20, 12, key="typedesc_topn")
+        desc_totals = df["CRASH_TYPE_DESC"].value_counts().nlargest(desc_top_n).index
+        dsub = df[df["CRASH_TYPE_DESC"].isin(desc_totals)]
+        dm2 = dsub.groupby(["CRASH_TYPE_DESC", "MODE"], observed=True).size().reset_index(name="count")
+        fig = px.bar(
+            dm2, y="CRASH_TYPE_DESC", x="count", color="MODE", orientation="h",
+            color_discrete_map=MODE_COLORS, category_orders={"MODE": MODES},
+        )
+        fig.update_layout(
+            yaxis_title=None, xaxis_title="Crashes",
+            yaxis={"categoryorder": "total ascending"}, barmode="stack",
+        )
+        st.plotly_chart(
+            style_fig(fig, title=f"Crash Type Description (top {desc_top_n}, by mode)", height=480),
+            use_container_width=True,
+        )
+        st.caption(
+            "Source: `bicycle_typing_20.csv` (`S4_CRASH_TYPE_DESCRIPTION`) -- the specific "
+            "collision mechanics (e.g. right-hook, dooring, overtaking), narrower than the "
+            "Crash Scenario / Type grouping above. Bicycle-typed crashes only."
+        )
+
+    st.markdown("---")
+    st.markdown("## Contributing Factors")
+    cf_cols_present = [c for c in ("ROAD_CIRCUMSTANCE", "ENVIRONMENT_CIRCUMSTANCE") if c in df.columns]
+    if cf_cols_present and df[cf_cols_present].notna().any().any():
+        cf_rows = []
+        for c in cf_cols_present:
+            src_label = "Road" if c == "ROAD_CIRCUMSTANCE" else "Environment"
+            vc = df[c].dropna().value_counts()
+            for factor, count in vc.items():
+                cf_rows.append({"Factor": factor, "Count": count, "Source": src_label})
+        cf_df = pd.DataFrame(cf_rows)
+        cf_top_n = st.slider("Number of contributing factors to show", 5, 20, 12, key="contrib_topn")
+        top_factors = cf_df.groupby("Factor")["Count"].sum().nlargest(cf_top_n).index
+        cf_sub = cf_df[cf_df["Factor"].isin(top_factors)]
+        fig = px.bar(
+            cf_sub, y="Factor", x="Count", color="Source", orientation="h",
+            color_discrete_sequence=["#42A5F5", "#FFA726"],
+        )
+        fig.update_layout(
+            yaxis_title=None, xaxis_title="Crashes",
+            yaxis={"categoryorder": "total ascending"}, barmode="stack",
+        )
+        st.plotly_chart(
+            style_fig(fig, title=f"Top {cf_top_n} Contributing Factors -- All Active Modes", height=480),
+            use_container_width=True,
+        )
+        st.caption(
+            "Source: `crash_event.csv` (`ROAD_CIRCUMSTANCES_1` + `ENVIRONMENT_CIRCUMSTANCES_1`) -- "
+            "road/environment CONDITIONS present at the crash, covering Bicycle + E-Bike + "
+            "E-Scooter. Different from the crash-typing charts above, which show what happened "
+            "rather than the conditions it happened under. Respects every sidebar filter."
+        )
+    else:
+        st.info(
+            "No `ROAD_CIRCUMSTANCE`/`ENVIRONMENT_CIRCUMSTANCE` columns in the loaded export. "
+            "Re-run `eda_analysis_combined.py` to pick them up in `power_bi_export.csv`."
+        )
+
+    st.markdown("---")
+    st.markdown("## Qwen Narrative Classification")
+    if "IN_QWEN_NARRATIVES" in df.columns:
+        qdf = df[df["IN_QWEN_NARRATIVES"] == True].copy()  # noqa: E712
+        st.caption(
+            f"**{len(qdf):,}** of the **{total:,}** currently filtered crashes have a "
+            f"Signal4Data narrative that was run through the Qwen classifier "
+            f"({len(qdf) / total * 100:.1f}%). The rest come from the S4_Crash_bicycle "
+            f"population directly, or from Signal4Data crashes with no matched narrative."
+        )
+        if len(qdf) and "QWEN_CLASS" in qdf.columns:
+            qc1, qc2 = st.columns(2)
+            with qc1:
+                qcounts = qdf["QWEN_CLASS"].value_counts()
+                fig = go.Figure(go.Pie(
+                    labels=qcounts.index, values=qcounts.values, hole=0.5,
+                    textinfo="label+percent",
+                ))
+                st.plotly_chart(style_fig(fig, title="Qwen Raw Classification"), use_container_width=True)
+            with qc2:
+                cross = qdf.groupby(["QWEN_CLASS", "MODE"], observed=True).size().reset_index(name="count")
+                pivot = cross.pivot(index="QWEN_CLASS", columns="MODE", values="count").fillna(0)
+                fig = go.Figure(go.Heatmap(
+                    z=pivot.values, x=pivot.columns, y=pivot.index,
+                    colorscale="Blues", colorbar=dict(title="Crashes"),
+                ))
+                st.plotly_chart(
+                    style_fig(fig, title="Qwen Raw Class vs. Final Mode"), use_container_width=True
+                )
+                st.caption(
+                    "Final Mode can differ from the raw Qwen label -- e.g. a Qwen "
+                    "'Bicyclist' call gets overridden to E-Bike/E-Scooter if that "
+                    "REPORT_NUMBER's S4_Crash_bicycle row was overridden (see About tab)."
+                )
+        elif len(qdf) == 0:
+            st.info("No narrative-classified crashes in the current filter selection.")
+    else:
+        st.info(
+            "No `QWEN_CLASS`/`IN_QWEN_NARRATIVES` columns in the loaded export. "
+            "Re-run `eda_analysis_combined.py` to pick them up."
+        )
+
+    st.markdown("---")
+    st.markdown("## Narrative Text Mining")
+    if narrative_raw is not None and "NARRATIVE_TEXT" in narrative_raw.columns:
+        filtered_rns = set(df[MAIN_CRASH_ID_COL].astype(str)) if MAIN_CRASH_ID_COL else None
+        ntext = narrative_raw.copy()
+        if filtered_rns is not None:
+            ntext = ntext[ntext["REPORT_NUMBER"].isin(filtered_rns)]
+        text_mode_col = "MODE" if "MODE" in ntext.columns else ("QWEN_MODE" if "QWEN_MODE" in ntext.columns else None)
+        if text_mode_col:
+            ntext = ntext[ntext[text_mode_col].isin(sel_modes)]
+
+        st.caption(
+            f"**{len(ntext):,}** narratives match the current sidebar filters "
+            f"(Mode, Year, Severity, etc. all apply here too)."
+        )
+
+        if len(ntext):
+            default_keywords = "phone,texting,helmet,alcohol,dark,sidewalk,crosswalk,wrong way,speeding,failed to yield,intoxicated,fled"
+            kw_input = st.text_input(
+                "Keywords to search (comma-separated) -- edit freely and the chart updates live",
+                value=default_keywords, key="keyword_search_input",
+            )
+            keywords = [k.strip().lower() for k in kw_input.split(",") if k.strip()]
+
+            if keywords and text_mode_col:
+                rows = []
+                for m in [mm for mm in MODES if mm in ntext[text_mode_col].unique()]:
+                    sub_txt = ntext[ntext[text_mode_col] == m]["NARRATIVE_TEXT"]
+                    n = len(sub_txt)
+                    for kw in keywords:
+                        pct = sub_txt.str.contains(re.escape(kw), case=False, na=False).mean() * 100 if n else 0
+                        rows.append({"Mode": m, "Keyword": kw, "Pct": pct, "N": n})
+                kdf = pd.DataFrame(rows)
+                if len(kdf):
+                    pivot = kdf.pivot(index="Keyword", columns="Mode", values="Pct").reindex(
+                        columns=[m for m in MODES if m in kdf["Mode"].unique()]
+                    )
+                    fig = go.Figure(go.Heatmap(
+                        z=pivot.values, x=pivot.columns, y=pivot.index,
+                        colorscale="YlOrRd", colorbar=dict(title="% of narratives"),
+                        text=np.round(pivot.values, 1), texttemplate="%{text}",
+                    ))
+                    st.plotly_chart(
+                        style_fig(fig, title="Keyword Mentions (% of narratives) by Mode", height=max(320, 34 * len(keywords))),
+                        use_container_width=True,
+                    )
+
+            st.markdown("#### Top words by mode")
+            st.caption("Reflects the Mode filter in the sidebar.")
+            STOPWORDS = set((
+                "the a an and or of to in on at for with was were is are be been being this that "
+                "it its he she they them his her their who was driver vehicle crash report "
+                "not no did do does had have has as by from into out up down "
+                "1 2 3 4 5 6 7 8 9 0"
+            ).split())
+            word_modes = [m for m in MODES if text_mode_col and m in ntext[text_mode_col].unique()]
+            if word_modes:
+                word_cols = st.columns(len(word_modes))
+                for wmode, wcol in zip(word_modes, word_cols):
+                    sub_txt = ntext[ntext[text_mode_col] == wmode]["NARRATIVE_TEXT"]
+                    words = re.findall(r"[a-z']{3,}", " ".join(sub_txt.tolist()))
+                    words = [w for w in words if w not in STOPWORDS]
+                    top_words = Counter(words).most_common(20)
+                    with wcol:
+                        if top_words:
+                            wdf = pd.DataFrame(top_words, columns=["word", "count"])
+                            fig = px.bar(wdf.sort_values("count"), x="count", y="word", orientation="h")
+                            fig.update_layout(yaxis_title=None, xaxis_title="Mentions")
+                            st.plotly_chart(
+                                style_fig(fig, title=f"Top 20 Words -- {wmode} (n={len(sub_txt):,})", height=460),
+                                use_container_width=True,
+                            )
+                        else:
+                            st.info(f"No words for {wmode}.")
+        else:
+            st.info("No narratives match the current filter selection.")
+    else:
+        st.markdown(
+            f"""<div class="section-note">
+            No <code>{DEFAULT_NARRATIVE_PATH}</code> loaded, so the interactive keyword
+            tool isn't available -- add it under the <b>Data Source</b> panel in the
+            sidebar. It's produced by <code>eda_analysis_combined.py</code> alongside
+            <code>power_bi_export.csv</code>.
+            </div>""",
+            unsafe_allow_html=True,
+        )
+
+    st.markdown("---")
+    st.markdown("## Spatiotemporal Hotspot Clusters")
+    if hotspot_raw is not None and "MODE" in hotspot_raw.columns:
+        hs = hotspot_raw[hotspot_raw["MODE"].isin(sel_modes)].copy()
+        emerging_only = st.checkbox("Emerging clusters only (late-period growth)", value=False, key="hotspot_emerging_only")
+        if emerging_only and "EMERGING" in hs.columns:
+            hs = hs[hs["EMERGING"] == True]  # noqa: E712
+        st.caption(
+            f"**{len(hs):,}** clusters match the Mode filter in the sidebar "
+            f"(hotspot table isn't affected by Year/Severity/etc. filters -- it's "
+            f"precomputed per mode over the full time range)."
+        )
+        if len(hs) and {"CENTER_LAT", "CENTER_LON"}.issubset(hs.columns):
+            fig = px.scatter_mapbox(
+                hs, lat="CENTER_LAT", lon="CENTER_LON", color="MODE",
+                size="N_CRASHES", size_max=28,
+                color_discrete_map=MODE_COLORS, category_orders={"MODE": MODES},
+                hover_data=["CLUSTER_ID", "N_CRASHES", "N_EARLY_PERIOD", "N_LATE_PERIOD", "GROWTH_RATIO"],
+                zoom=5.4, height=560,
+            )
+            fig = style_fig(fig, height=560, title="Cluster Centers (bubble size = crashes in cluster)")
+            fig.update_layout(mapbox_style="open-street-map", margin=dict(l=0, r=0, t=56, b=0))
+            st.plotly_chart(fig, use_container_width=True)
+
+            sort_col = "GROWTH_RATIO" if "GROWTH_RATIO" in hs.columns else hs.columns[0]
+            st.dataframe(
+                hs.sort_values(sort_col, ascending=False),
+                use_container_width=True, hide_index=True,
+            )
+        else:
+            st.info("No clusters match the current Mode selection.")
+        st.caption(
+            "Exploratory DBSCAN clustering (see `eda_analysis_combined.py` section 09d) -- "
+            "not a validated hotspot-detection pipeline. 'Emerging' = late-period count "
+            "> 1.5x early-period count, with at least 5 late-period crashes."
+        )
+    else:
+        st.markdown(
+            f"""<div class="section-note">
+            No <code>{DEFAULT_HOTSPOT_PATH}</code> loaded, so the interactive hotspot
+            explorer isn't available -- add it under the <b>Data Source</b> panel in the
+            sidebar.
+            </div>""",
+            unsafe_allow_html=True,
+        )
+
+    render_pipeline_figures("tab7")
+
 
 st.markdown(
     """<div style="text-align:center; color:#9aa0b8; font-size:0.78rem; padding: 1.2rem 0 0.4rem 0;">

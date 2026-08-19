@@ -1,9 +1,10 @@
 metric,value,note
-query_params_report_numbers,20769,REPORT_NUMBERs originally pulled to build this data extract (query_params.csv). Some of these did not make it into the final crash_event.csv export.
-crash_event_total_crashes,20437,"Unique crashes actually present in crash_event.csv, all crash types (bicycle, pedestrian, single-vehicle, MV-only, animal, etc.)."
-active_mode_crashes,17247,"Crashes classified as Bicycle, E-Bike, or E-Scooter -- this dashboard's scope. Pedestrian-only, MV-only, and other non-active-mode crashes are excluded."
-bicycle_crashes,5620,Includes both Qwen-narrative-labeled and structurally-classified (S4_CRASH_TYPE / NON_MOTORIST_DESCRIPTION_CODE) bicycle crashes.
-ebike_crashes,6353,Identified exclusively via Qwen LLM narrative classification -- Florida crash forms have no structural E-Bike code.
-escooter_crashes,5274,Identified exclusively via Qwen LLM narrative classification -- Florida crash forms have no structural E-Scooter code.
-narrative_labeled_crashes,20769,Crashes with a Qwen-classified crash narrative (multilabel_ebike.xlsx + multilabel_RegBike.xlsx).
-crashes_with_micromobility_speed,770,"Crashes where micromobility_speed had a usable non-zero value for that crash's MODE (see power_bi_export.csv column MICROMOBILITY_SPEED_MPH; '0mph' entries in the source narrative are treated as Not Mentioned and excluded, per Section 11/08f)."
+query_params_report_numbers,20769,"REPORT_NUMBERs originally pulled to build the Signal4Data extract (query_params.csv). Covers Signal4Data only -- E-Bike/E-Scooter/Other come from this pull; Bicycle comes from the separate, larger S4_Crash_bicycle population and isn't part of this count."
+crash_event_total_crashes,114860,"Unique crashes in the COMBINED crash_event table: S4_Crash_bicycle (bicycle population) + Signal4Data (E-Bike/E-Scooter/Other, and any Signal4Data crash whose REPORT_NUMBER isn't already covered by S4_Crash_bicycle). See eda_analysis_combined.py section 5."
+bicycle_population_s4_crash_bicycle,107916,"Unique bicycle crashes in the S4_Crash_bicycle source population, before the Qwen E-Bike/E-Scooter override is applied."
+active_mode_crashes,113004,"Crashes classified as Bicycle, E-Bike, or E-Scooter -- this dashboard's scope. Pedestrian-only, MV-only, and other non-active-mode crashes are excluded."
+bicycle_crashes,101377,"Sourced from the S4_Crash_bicycle population (bigger, dedicated bicycle extract), MINUS any REPORT_NUMBER that Qwen's narrative classifier reclassified as E-Bike or E-Scooter. No longer uses Signal4Data's S4_CRASH_TYPE/NON_MOTORIST_DESCRIPTION_CODE structural fallback."
+ebike_crashes,6353,Identified exclusively via Qwen LLM narrative classification -- Florida crash forms have no structural E-Bike code. Sourced from Signal4Data.
+escooter_crashes,5274,Identified exclusively via Qwen LLM narrative classification -- Florida crash forms have no structural E-Scooter code. Sourced from Signal4Data.
+narrative_labeled_crashes,20769,"Crashes with a Qwen-classified crash narrative (multilabel_ebike.xlsx + multilabel_RegBike.xlsx), Signal4Data only."
+crashes_with_micromobility_speed,775,"Crashes where micromobility_speed had a usable non-zero value for that crash's MODE (see power_bi_export.csv column MICROMOBILITY_SPEED_MPH; '0mph' entries in the source narrative are treated as Not Mentioned and excluded, per Section 11/08f)."
