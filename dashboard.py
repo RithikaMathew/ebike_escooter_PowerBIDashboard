@@ -85,6 +85,46 @@ META_FUNNEL_ORDER = [
     "crash_event_total_crashes", "active_mode_crashes",
 ]
 
+# ----------------------------------------------------------------------------
+# Crash Causation (LLM narrative classification) -- see cause_analysis_export.csv,
+# built from multilabel_RegBike_cause.xlsx + multilabel_ebike_cause.xlsx by
+# tagging each row's ID as REPORT_NUMBER and its `prediction` field as MODE.
+# ----------------------------------------------------------------------------
+CAUSE_DRIVER = [
+    "driver_failed_to_yield_turning", "driver_ran_stop_sign_or_red_light",
+    "rear_end_following_too_close", "distraction_inattention",
+    "speeding_reckless_driving", "impairment", "dooring",
+]
+CAUSE_NON_MOTORIST = [
+    "non_motorist_failed_to_yield_entering_roadway",
+    "non_motorist_ran_stop_sign_or_signal", "wrong_way_riding",
+    "sidewalk_driveway_conflict",
+]
+CAUSE_AMBIGUOUS = [
+    "obstructed_sightline", "low_visibility_no_lights", "hit_and_run",
+    "insufficient_information", "mechanical_failure", "other",
+]
+
+def cause_attribution(cause):
+    if cause in CAUSE_DRIVER:
+        return "Driver-attributable"
+    if cause in CAUSE_NON_MOTORIST:
+        return "Non-motorist-attributable"
+    return "Ambiguous / environmental"
+
+CAUSE_LABELS = {c: c.replace("_", " ").capitalize() for c in
+                CAUSE_DRIVER + CAUSE_NON_MOTORIST + CAUSE_AMBIGUOUS}
+INFRA_TYPE_LABELS = {
+    "travel_lane": "Travel lane", "sidewalk": "Sidewalk", "crosswalk": "Crosswalk",
+    "bike_lane": "Bike lane", "driveway_or_parking_lot": "Driveway/parking lot",
+    "shoulder": "Shoulder", "multi_use_path": "Multi-use path", "unknown": "Unknown",
+}
+ATTRIBUTION_COLORS = {
+    "Driver-attributable": "#5C6BC0",
+    "Non-motorist-attributable": "#EF5350",
+    "Ambiguous / environmental": "#BDBDBD",
+}
+
 
 def find_col(df, candidates):
     """Return the first matching column name (case-insensitive), or None."""
@@ -257,6 +297,24 @@ section[data-testid="stSidebar"] [data-baseweb="select"] * {
     opacity: 1 !important;
 }
 
+/* The rule above is too broad for the colored tag chips (the selected
+   Mode/County/etc. pills) -- it was forcing their delete "x" icon's fill
+   to the same dark navy as the pill's own outline/box-shadow, which
+   collapses the X's cutout into a solid dark blob sitting inside a
+   stray white box. Re-assert white for everything inside a tag (text +
+   icon need contrast against the colored chip), and keep the icon's own
+   background transparent so no boxy artifact shows behind it. */
+section[data-testid="stSidebar"] [data-baseweb="select"] [data-baseweb="tag"],
+section[data-testid="stSidebar"] [data-baseweb="select"] [data-baseweb="tag"] * {
+    color: #ffffff !important;
+    fill: #ffffff !important;
+}
+section[data-testid="stSidebar"] [data-baseweb="select"] [data-baseweb="tag"] svg,
+section[data-testid="stSidebar"] [data-baseweb="select"] [data-baseweb="tag"] [role="presentation"] {
+    background-color: transparent !important;
+    box-shadow: none !important;
+}
+
 .dash-header {
     padding: 1.1rem 1.6rem;
     background: linear-gradient(120deg, #12172b 0%, #1e2a5e 60%, #2b3f8c 100%);
@@ -324,6 +382,7 @@ DEFAULT_DEMO_PATH = "power_bi_export_demographics.csv"
 DEFAULT_META_PATH = "dashboard_meta.csv"
 DEFAULT_NARRATIVE_PATH = "narrative_text_export.csv"
 DEFAULT_HOTSPOT_PATH = "spatiotemporal_hotspots_by_mode.csv"
+DEFAULT_CAUSE_PATH = "cause_analysis_export.csv"
 
 
 def _mtime_key(path_or_buffer):
@@ -395,6 +454,22 @@ def load_hotspots(path_or_buffer, _mtime=None):
     return pd.read_csv(path_or_buffer)
 
 
+@st.cache_data
+def load_cause_data(path_or_buffer, _mtime=None):
+    """LLM narrative-classified crash causation (one row per crash) --
+    primary_cause / infrastructure_type / speed_contributing, built from
+    multilabel_RegBike_cause.xlsx + multilabel_ebike_cause.xlsx. See
+    cause_analysis_export.csv for the combined REPORT_NUMBER/MODE schema."""
+    cdf = pd.read_csv(path_or_buffer)
+    cdf["REPORT_NUMBER"] = cdf["REPORT_NUMBER"].astype(str)
+    if "primary_cause" in cdf.columns:
+        cdf["ATTRIBUTION"] = cdf["primary_cause"].apply(cause_attribution)
+        cdf["CAUSE_LABEL"] = cdf["primary_cause"].map(CAUSE_LABELS).fillna(cdf["primary_cause"])
+    if "infrastructure_type" in cdf.columns:
+        cdf["INFRA_LABEL"] = cdf["infrastructure_type"].map(INFRA_TYPE_LABELS).fillna(cdf["infrastructure_type"])
+    return cdf
+
+
 def file_input(label, default_path, key):
     """Sidebar uploader with a friendly fallback: use the file sitting next
     to the script if present, else let the user upload it, else skip
@@ -415,6 +490,7 @@ with st.sidebar:
         meta_src = file_input(f"Upload {DEFAULT_META_PATH}", DEFAULT_META_PATH, "meta_upload")
         narrative_src = file_input(f"Upload {DEFAULT_NARRATIVE_PATH}", DEFAULT_NARRATIVE_PATH, "narrative_upload")
         hotspot_src = file_input(f"Upload {DEFAULT_HOTSPOT_PATH}", DEFAULT_HOTSPOT_PATH, "hotspot_upload")
+        cause_src = file_input(f"Upload {DEFAULT_CAUSE_PATH}", DEFAULT_CAUSE_PATH, "cause_upload")
 
 if main_src is not None:
     df_raw = load_data(main_src, _mtime=_mtime_key(main_src))
@@ -432,6 +508,7 @@ demo_raw = load_demographics(demo_src, _mtime=_mtime_key(demo_src)) if demo_src 
 meta_raw = load_meta(meta_src, _mtime=_mtime_key(meta_src)) if meta_src is not None else None
 narrative_raw = load_narratives(narrative_src, _mtime=_mtime_key(narrative_src)) if narrative_src is not None else None
 hotspot_raw = load_hotspots(hotspot_src, _mtime=_mtime_key(hotspot_src)) if hotspot_src is not None else None
+cause_raw = load_cause_data(cause_src, _mtime=_mtime_key(cause_src)) if cause_src is not None else None
 
 MAIN_CRASH_ID_COL = find_col(df_raw, CRASH_ID_CANDIDATES)
 DEMO_CRASH_ID_COL = find_col(demo_raw, CRASH_ID_CANDIDATES) if demo_raw is not None else None
@@ -804,7 +881,7 @@ def style_fig(fig, height=380, title=None):
 # ============================================================================
 # TABS
 # ============================================================================
-tab0, tab1, tab2, tab3, tab4, tab5, tab6, tab7 = st.tabs([
+tab0, tab1, tab2, tab3, tab4, tab5, tab6, tab7, tab8, tab9 = st.tabs([
     "\u2139\uFE0F About This Dashboard",
     "\U0001F4C8 Overview & Trends",
     "\U0001F6A8 Severity & Outcomes",
@@ -813,6 +890,8 @@ tab0, tab1, tab2, tab3, tab4, tab5, tab6, tab7 = st.tabs([
     "\U0001F6E3 Roadway Infrastructure",
     "\U0001F9D1 Demographics",
     "\U0001F4DD Narrative, Typing & Hotspots",
+    "\U0001F50D Crash Causation",
+    "\U0001F4CC Insights",
 ])
 
 # ---------------------------------------------------------------------------
@@ -1884,6 +1963,711 @@ with tab7:
         )
 
     render_pipeline_figures("tab7")
+
+
+# ---------------------------------------------------------------------------
+# TAB 8 -- CRASH CAUSATION (LLM narrative classification)
+# ---------------------------------------------------------------------------
+with tab8:
+    st.markdown("## Crash Causation (LLM Narrative Classification)")
+    st.markdown(
+        """<div class="section-note">
+        Every crash here was read by an LLM classifier and assigned a
+        <code>primary_cause</code>, an <code>infrastructure_type</code> (where the
+        rider was at the moment of impact), and whether <code>speed_contributing</code>
+        played a role -- the closest thing in this dataset to "why did this crash
+        actually happen," as opposed to what conditions surrounded it. Source:
+        <code>multilabel_RegBike_cause.xlsx</code> + <code>multilabel_ebike_cause.xlsx</code>.
+        </div>""",
+        unsafe_allow_html=True,
+    )
+
+    if cause_raw is None or "primary_cause" not in cause_raw.columns:
+        st.markdown(
+            f"""<div class="section-note">
+            No <code>{DEFAULT_CAUSE_PATH}</code> loaded, so the causation
+            breakdown isn't available -- add it under the <b>Data Source</b> panel
+            in the sidebar.
+            </div>""",
+            unsafe_allow_html=True,
+        )
+    else:
+        cdf = cause_raw[cause_raw["MODE"].isin(sel_modes)].copy()
+        if MAIN_CRASH_ID_COL:
+            filtered_rns = set(df[MAIN_CRASH_ID_COL].astype(str))
+            cdf = cdf[cdf["REPORT_NUMBER"].isin(filtered_rns)]
+
+        st.caption(
+            f"**{len(cdf):,}** narrative-classified crashes match the current sidebar "
+            f"filters (Mode, Year, Severity, County, etc. all apply here too)."
+        )
+
+        if len(cdf) == 0:
+            st.info("No causation-classified crashes in the current filter selection.")
+        else:
+            present_modes = [m for m in MODES if m in cdf["MODE"].unique()]
+
+            def insight(text):
+                st.markdown(
+                    f"""<div class="section-note">\U0001F4A1 <b>Key insight:</b> {text}</div>""",
+                    unsafe_allow_html=True,
+                )
+
+            # ================================================================
+            # 1. Fault attribution -- driver vs. non-motorist vs. ambiguous
+            # ================================================================
+            st.markdown("### 1. Fault Attribution")
+            att = cdf.groupby(["MODE", "ATTRIBUTION"], observed=True).size().reset_index(name="count")
+            att["pct"] = att.groupby("MODE")["count"].transform(lambda s: s / s.sum() * 100)
+            fig = px.bar(
+                att, x="MODE", y="pct", color="ATTRIBUTION", barmode="stack",
+                category_orders={"MODE": present_modes, "ATTRIBUTION": list(ATTRIBUTION_COLORS.keys())},
+                color_discrete_map=ATTRIBUTION_COLORS,
+                text=att["pct"].round(1).astype(str) + "%",
+            )
+            fig.update_layout(yaxis_title="% of narrative-classified crashes", xaxis_title=None)
+            st.plotly_chart(style_fig(fig, title="Fault Attribution by Mode"), use_container_width=True)
+            st.caption(
+                "Driver-attributable: failed to yield turning, ran stop/red light, following "
+                "too close, distracted, speeding/reckless, impaired, dooring. Non-motorist-"
+                "attributable: failed to yield entering roadway, ran stop/signal, wrong-way "
+                "riding, sidewalk-driveway conflict."
+            )
+            overall_att = cdf["ATTRIBUTION"].value_counts(normalize=True) * 100
+            top2 = cdf["CAUSE_LABEL"].value_counts(normalize=True).nlargest(2) * 100
+            insight(
+                f"Across the current selection, fault splits nearly evenly: "
+                f"{overall_att.get('Driver-attributable', 0):.1f}% driver-attributable vs. "
+                f"{overall_att.get('Non-motorist-attributable', 0):.1f}% non-motorist-attributable. "
+                f"Just two categories -- <b>{top2.index[0]}</b> ({top2.iloc[0]:.1f}%) and "
+                f"<b>{top2.index[1] if len(top2) > 1 else ''}</b> "
+                f"({top2.iloc[1] if len(top2) > 1 else 0:.1f}%) -- account for "
+                f"{top2.sum():.1f}% of all classified crashes. This is overwhelmingly a "
+                f"yielding problem at points where paths cross, not a diverse mix of failure modes."
+            )
+
+            # ================================================================
+            # 2. Where crashes happen
+            # ================================================================
+            st.markdown("### 2. Where the Rider Was at Impact")
+            im = cdf.groupby(["INFRA_LABEL", "MODE"], observed=True).size().reset_index(name="count")
+            fig = px.bar(
+                im, y="INFRA_LABEL", x="count", color="MODE", orientation="h",
+                color_discrete_map=MODE_COLORS, category_orders={"MODE": present_modes},
+            )
+            fig.update_layout(
+                yaxis_title=None, xaxis_title="Crashes",
+                yaxis={"categoryorder": "total ascending"}, barmode="stack",
+            )
+            st.plotly_chart(
+                style_fig(fig, title="Infrastructure Type at Impact, by Mode", height=440),
+                use_container_width=True,
+            )
+            infra_pct = cdf["INFRA_LABEL"].value_counts(normalize=True) * 100
+            off_road = infra_pct.get("Sidewalk", 0) + infra_pct.get("Crosswalk", 0)
+            bike_lane_pct = infra_pct.get("Bike lane", 0)
+            insight(
+                f"Sidewalk + crosswalk together account for <b>{off_road:.1f}%</b> of "
+                f"narrative-classified crashes in the current selection -- roughly half of all "
+                f"crashes happen where the rider wasn't in the road at all. Only "
+                f"<b>{bike_lane_pct:.1f}%</b> happened in a dedicated bike lane, despite how "
+                f"much infrastructure conversation centers on bike lanes specifically."
+            )
+
+            # ================================================================
+            # 3. Cause x location interaction (the "right hook" pattern)
+            # ================================================================
+            st.markdown("### 3. Primary Cause by Location -- Infrastructure Doesn't Remove the Yielding Problem, It Relocates It")
+            mode_label = " + ".join(present_modes)
+            cross = cdf.groupby(["INFRA_LABEL", "CAUSE_LABEL"], observed=True).size().reset_index(name="count")
+            pivot = cross.pivot(index="INFRA_LABEL", columns="CAUSE_LABEL", values="count").fillna(0)
+            top_cause_cols = cdf["CAUSE_LABEL"].value_counts().nlargest(8).index
+            pivot_cols = [c for c in top_cause_cols if c in pivot.columns]
+            pivot_pct = pivot[pivot_cols].div(pivot[pivot_cols].sum(axis=1).replace(0, 1), axis=0) * 100
+            fig = go.Figure(go.Heatmap(
+                z=pivot_pct.values, x=pivot_pct.columns, y=pivot_pct.index,
+                colorscale="Reds", colorbar=dict(title="% of that location's crashes"),
+                text=np.round(pivot_pct.values, 1), texttemplate="%{text}",
+            ))
+            st.plotly_chart(
+                style_fig(fig, title=f"Primary Cause x Location -- {mode_label} (row %)", height=420),
+                use_container_width=True,
+            )
+            bike_lane_row = pivot_pct.loc["Bike lane"] if "Bike lane" in pivot_pct.index else None
+            if bike_lane_row is not None and len(bike_lane_row):
+                top_bl_cause = bike_lane_row.idxmax()
+                insight(
+                    f"For the current mode selection ({mode_label}), bike-lane crashes are "
+                    f"dominated by <b>{top_bl_cause}</b> ({bike_lane_row.max():.1f}% of bike-lane "
+                    f"crashes) -- a dedicated bike lane doesn't remove the 'driver turns across "
+                    f"the rider's path' problem, it's often where that pattern is most "
+                    f"concentrated (a 'right-hook' at intersections, since the lane puts the "
+                    f"rider exactly where a right-turning driver is most likely to miss them)."
+                )
+
+            # ================================================================
+            # 4. Sidewalk riding is a driveway problem
+            # ================================================================
+            st.markdown("### 4. Sidewalk Crashes: a Driveway Problem More Than a Road-Crossing Problem")
+            sw = cdf[cdf["INFRA_LABEL"] == "Sidewalk"]
+            if len(sw):
+                sw_causes = sw["CAUSE_LABEL"].value_counts(normalize=True).nlargest(6) * 100
+                fig = px.bar(
+                    x=sw_causes.values, y=sw_causes.index, orientation="h",
+                    color_discrete_sequence=["#5C6BC0"],
+                )
+                fig.update_layout(yaxis_title=None, xaxis_title="% of sidewalk crashes",
+                                   yaxis={"categoryorder": "total ascending"})
+                st.plotly_chart(
+                    style_fig(fig, title=f"Top Causes of Sidewalk Crashes ({', '.join(present_modes)})", height=340),
+                    use_container_width=True,
+                )
+                dwc = sw["CAUSE_LABEL"].value_counts(normalize=True).get("Sidewalk driveway conflict", 0) * 100
+                dft = sw["CAUSE_LABEL"].value_counts(normalize=True).get("Driver failed to yield turning", 0) * 100
+                insight(
+                    f"Sidewalk crashes split mainly between driveway conflicts "
+                    f"({dwc:.1f}%) and drivers failing to yield while turning ({dft:.1f}%) -- "
+                    f"together {dwc + dft:.1f}% of sidewalk crashes. The risk of sidewalk "
+                    f"riding looks concentrated at the many driveway crossings a sidewalk route "
+                    f"passes, not from riding along the sidewalk itself -- pointing toward "
+                    f"driveway-crossing treatments as a more targeted fix than sidewalk-riding bans."
+                )
+            else:
+                st.info("No sidewalk crashes in the current filter selection.")
+
+            # ================================================================
+            # 5. Speed as a documented factor
+            # ================================================================
+            st.markdown("### 5. Speed as a Documented Factor (Either Party)")
+            sc = cdf.groupby(["MODE", "speed_contributing"], observed=True).size().reset_index(name="count")
+            sc["pct"] = sc.groupby("MODE")["count"].transform(lambda s: s / s.sum() * 100)
+            fig = px.bar(
+                sc, x="MODE", y="pct", color="speed_contributing", barmode="stack",
+                category_orders={"MODE": present_modes, "speed_contributing": ["yes", "unclear", "no"]},
+                color_discrete_map={"yes": "#C0392B", "unclear": "#BDBDBD", "no": "#81C784"},
+            )
+            fig.update_layout(yaxis_title="% of narrative-classified crashes", xaxis_title=None)
+            st.plotly_chart(style_fig(fig, title="Speed Flagged as Contributing (Driver or Rider), by Mode"), use_container_width=True)
+            st.caption(
+                "**Not micromobility-speed-specific.** This flags whether the narrative says "
+                "*anyone's* speed -- the rider's or the driver's -- contributed to the crash; it "
+                "isn't restricted to the micromobility rider. In a sample check, ~65% of 'yes' "
+                "narratives referenced the rider's speed and ~38% referenced the driver's/"
+                "vehicle's (some flag both). For rider-speed-only numbers, see the "
+                "`MICROMOBILITY_SPEED_MPH` chart on the Insights tab (Section 4)."
+            )
+            yes_by_mode = cdf[cdf["speed_contributing"] == "yes"].groupby("MODE", observed=True).size() \
+                / cdf.groupby("MODE", observed=True).size() * 100
+            yes_text = "; ".join(f"{m}: {yes_by_mode.get(m, 0):.1f}%" for m in present_modes)
+            insight(
+                f"'Yes' rates by mode -- {yes_text}. Don't read the low overall rate as "
+                f"'speed isn't a factor': officer narratives often just don't discuss speed "
+                f"unless it was extreme or measured, so <b>unclear</b> (the largest bucket for "
+                f"every mode) reflects a reporting gap, not evidence that speed was low."
+            )
+
+            # ================================================================
+            # 6. Hit-and-run & wrong-way riding
+            # ================================================================
+            st.markdown("### 6. Hit-and-Run & Wrong-Way Riding")
+            hr = cdf[cdf["primary_cause"] == "hit_and_run"]
+            wwr = cdf[cdf["primary_cause"] == "wrong_way_riding"]
+            hc1, hc2 = st.columns(2)
+            with hc1:
+                if len(hr):
+                    hr_infra = hr["INFRA_LABEL"].value_counts(normalize=True) * 100
+                    fig = px.bar(
+                        x=hr_infra.values, y=hr_infra.index, orientation="h",
+                        color_discrete_sequence=["#C0392B"],
+                    )
+                    fig.update_layout(yaxis_title=None, xaxis_title="% of hit-and-run crashes",
+                                       yaxis={"categoryorder": "total ascending"})
+                    st.plotly_chart(
+                        style_fig(fig, title=f"Hit-and-Run Location (n={len(hr):,})", height=320),
+                        use_container_width=True,
+                    )
+                else:
+                    st.info("No hit-and-run crashes in the current filter selection.")
+            with hc2:
+                if len(wwr):
+                    wwr_infra = wwr["INFRA_LABEL"].value_counts(normalize=True) * 100
+                    fig = px.bar(
+                        x=wwr_infra.values, y=wwr_infra.index, orientation="h",
+                        color_discrete_sequence=["#FF9800"],
+                    )
+                    fig.update_layout(yaxis_title=None, xaxis_title="% of wrong-way-riding crashes",
+                                       yaxis={"categoryorder": "total ascending"})
+                    st.plotly_chart(
+                        style_fig(fig, title=f"Wrong-Way Riding Location (n={len(wwr):,})", height=320),
+                        use_container_width=True,
+                    )
+                else:
+                    st.info("No wrong-way-riding crashes in the current filter selection.")
+            insight(
+                f"Hit-and-run ({len(hr):,} crashes, {len(hr) / len(cdf) * 100:.1f}% of the "
+                f"current selection) is spread fairly evenly across location types -- a driver-"
+                f"behavior issue independent of where the rider was, not a location-specific risk. "
+                f"Wrong-way riding ({len(wwr):,} crashes, {len(wwr) / len(cdf) * 100:.1f}%) "
+                f"concentrates in travel lanes and bike lanes rather than sidewalks -- mostly a "
+                f"'riding against traffic in a facility meant for one-way travel' problem."
+            )
+
+            # ================================================================
+            # Data quality notes
+            # ================================================================
+            st.markdown("### Data Quality Notes")
+            noise = cause_raw[cause_raw["MODE"] == "Other"]
+            cross_class = cause_raw.groupby("SOURCE_FILE")["MODE"].value_counts() if "SOURCE_FILE" in cause_raw.columns else None
+            notes = [
+                f"**Confidence is effectively capped** in the source classifier's output -- "
+                f"not a strong signal for filtering 'high-quality' rows beyond excluding a small low tail.",
+                f"**{len(noise):,} rows across both source files** landed as mode `Other` rather "
+                f"than Bicycle/E-Bike/E-Scooter and are excluded from every chart on this tab.",
+                "`cause_flag` is almost entirely empty in the source files and isn't a usable QA filter as-is.",
+            ]
+            for n in notes:
+                st.markdown(f"- {n}")
+            if cross_class is not None:
+                with st.expander("Raw prediction counts by source file (mode-label cross-contamination)"):
+                    st.dataframe(cross_class.unstack(fill_value=0), use_container_width=True)
+
+    render_pipeline_figures("tab8")
+
+
+# ---------------------------------------------------------------------------
+# TAB 9 -- INSIGHTS (curated summary of mode_comparison_findings.md +
+# mode_comparison_findings_supplement.md). These two reports were built from
+# the pre-computed `tables/` pipeline and `mode_comparison_report.xlsx`, not
+# from power_bi_export.csv directly -- so unlike every other tab, the charts
+# here use the literal numbers from those reports rather than recomputing
+# live off the sidebar filters. Treat this tab as a fixed summary, not an
+# interactive query.
+# ---------------------------------------------------------------------------
+with tab9:
+    st.markdown("## Key Insights: Bicycle vs. E-Bike vs. E-Scooter")
+    st.markdown(
+        """<div class="section-note">
+        Curated from three analysis passes -- <code>mode_comparison_findings.md</code>
+        (chi-square/Kruskal-Wallis over <code>power_bi_export.csv</code>, ranked by
+        effect size), <code>mode_comparison_findings_supplement.md</code> (mined
+        from the 40 pre-computed <code>tables/</code>), and the LLM narrative
+        causation classification behind the <b>Crash Causation</b> tab. Sections 1-9
+        below are <b>static</b> -- built from numbers already computed in the two
+        reports, not re-filtered by the sidebar, since the underlying granular
+        tables aren't part of the CSVs this dashboard loads. Section 10 is <b>live</b>
+        and does respect the sidebar filters -- see the note above that section.
+        </div>""",
+        unsafe_allow_html=True,
+    )
+
+    def stat_card(col, label, value, sub, color):
+        col.markdown(
+            f"""<div class="kpi-card" style="border-left-color:{color};">
+                    <div class="kpi-label">{label}</div>
+                    <div class="kpi-value">{value}</div>
+                    <div class="kpi-sub">{sub}</div>
+                </div>""",
+            unsafe_allow_html=True,
+        )
+
+    def insight(text):
+        st.markdown(f"""<div class="section-note">\U0001F4A1 <b>Why it matters:</b> {text}</div>""",
+                     unsafe_allow_html=True)
+
+    # ================================================================
+    # Headline stat cards
+    # ================================================================
+    s1, s2, s3, s4 = st.columns(4)
+    stat_card(s1, "FATALITY RISK PER CRASH", "~7x higher",
+              "E-bike/e-scooter vs. bicycle -- the single largest effect in the data", "#B71C1C")
+    stat_card(s2, "E-SCOOTER CRASHES", "50.2% pedestrian-involved",
+              "vs. 13.9% bicycle -- ~3.6x higher", "#FF9800")
+    stat_card(s3, "CRASH GROWTH, 2014-2025", "~200x / ~59x",
+              "E-bike / e-scooter, while bicycle was +15%", "#4CAF50")
+    stat_card(s4, "MEDIAN CRASH SPEED", "18.0 mph e-bike",
+              "vs. 12.5 mph bicycle (+44%)", "#2196F3")
+
+    st.write("")
+    st.markdown("---")
+
+    # ================================================================
+    # 1. Fatality risk
+    # ================================================================
+    st.markdown("### 1. Fatality Risk Per Crash")
+    fatal_df = pd.DataFrame({
+        "MODE": MODES,
+        "Fatalities per 1,000 crashes": [1.99, 14.17, 13.27],
+    })
+    fig = px.bar(
+        fatal_df, x="MODE", y="Fatalities per 1,000 crashes", color="MODE",
+        color_discrete_map=MODE_COLORS, category_orders={"MODE": MODES}, text="Fatalities per 1,000 crashes",
+    )
+    fig.update_traces(texttemplate="%{text:.2f}", textposition="outside")
+    fig.update_layout(showlegend=False, xaxis_title=None)
+    st.plotly_chart(style_fig(fig, title="Fatalities per 1,000 Crashes, by Mode"), use_container_width=True)
+    insight(
+        "A reported e-bike crash is ~7.1x more likely to be fatal than a bicycle crash; "
+        "e-scooter is ~6.7x. This holds even though non-fatal severity looks similar or "
+        "slightly milder for e-bike/e-scooter -- the fatality gap is a distinct signal, not "
+        "just a tail extension of a general severity gap. Fatal e-bike/e-scooter crashes are "
+        "also disproportionately urban (95.2% / 97.1% vs. 88.0% bicycle), so this isn't a "
+        "rural-highway story. This is the strongest single hook for a regulation/infrastructure "
+        "response in the whole dataset."
+    )
+
+    # ================================================================
+    # 2. Crash type -- who e-scooters actually collide with
+    # ================================================================
+    st.markdown("### 2. Crash Type: E-Scooters Collide With Pedestrians, Not Vehicles")
+    ct_df = pd.DataFrame({
+        "MODE": MODES * 3,
+        "Crash Type": ["Pedestrian-involved"] * 3 + ["Single Vehicle"] * 3 + ["Bicycle-type collision"] * 3,
+        "Pct": [13.9, 17.2, 50.2, 22.9, 19.7, 28.0, 61.2, 60.6, 20.1],
+    })
+    fig = px.bar(
+        ct_df, x="MODE", y="Pct", color="Crash Type", barmode="group",
+        category_orders={"MODE": MODES}, color_discrete_sequence=["#EF5350", "#FFA726", "#5C6BC0"],
+    )
+    fig.update_layout(yaxis_title="% of that mode's crashes", xaxis_title=None)
+    st.plotly_chart(style_fig(fig, title="Crash Type by Mode"), use_container_width=True)
+    insight(
+        "E-scooter crashes are pedestrian-involved half the time -- roughly 3.6x the bicycle "
+        "rate. This is the strongest real signal in the original mode-comparison analysis and "
+        "points to riders operating on sidewalks/shared paths rather than the roadway, colliding "
+        "with pedestrians instead of vehicles. A bicycle-oriented lane network doesn't fix this "
+        "if scooter riders aren't using the roadway in the first place -- protected micromobility "
+        "lanes separated from both traffic <i>and</i> pedestrians, plus sidewalk-riding "
+        "enforcement, are the levers this points to specifically for e-scooters."
+    )
+
+    # ================================================================
+    # 3. Growth trajectory
+    # ================================================================
+    st.markdown("### 3. Growth Trajectory: The Clearest \"Why Now\" Argument")
+    growth_df = pd.DataFrame({
+        "Year": [2014, 2019, 2022, 2025] * 3,
+        "MODE": ["Bicycle"] * 4 + ["E-Bike"] * 4 + ["E-Scooter"] * 4,
+        "Crashes": [8121, 7847, 8181, 9329, 11, 60, 351, 2207, 27, 100, 376, 1589],
+    })
+    fig = px.line(
+        growth_df, x="Year", y="Crashes", color="MODE", markers=True,
+        color_discrete_map=MODE_COLORS, category_orders={"MODE": MODES}, log_y=True,
+    )
+    fig.update_layout(yaxis_title="Crashes per year (log scale)", xaxis_title=None)
+    st.plotly_chart(style_fig(fig, title="Crashes by Year, by Mode"), use_container_width=True)
+    insight(
+        "E-bike crashes grew ~200x from 2014 to 2025 (11 &rarr; 2,207); e-scooter grew ~59x "
+        "(27 &rarr; 1,589). Bicycle crashes were essentially flat (+15% over 11 years). The "
+        "population of at-risk riders exploded in a decade where bicycle crash counts barely "
+        "moved -- the strongest \"policy/infrastructure hasn't caught up\" argument in the data. "
+        "Caveat: this tracks device adoption, not a change in relative riskiness -- a true rate "
+        "comparison (crashes per rider/trip/registered device) would need an exposure "
+        "denominator this dataset doesn't have."
+    )
+
+    # ================================================================
+    # 4. Speed
+    # ================================================================
+    st.markdown("### 4. Speed: E-Bikes and E-Scooters Run Faster Than Pedal Bikes")
+    sp1, sp2 = st.columns(2)
+    with sp1:
+        speed_a = pd.DataFrame({"MODE": MODES, "Median mph": [12.5, 18.0, 15.0], "n": [51, 540, 184]})
+        fig = px.bar(speed_a, x="MODE", y="Median mph", color="MODE", color_discrete_map=MODE_COLORS,
+                     category_orders={"MODE": MODES}, text="Median mph")
+        fig.update_traces(textposition="outside")
+        fig.update_layout(showlegend=False, xaxis_title=None)
+        st.plotly_chart(
+            style_fig(fig, title="Median Crash Speed (extraction run 1)", height=340), use_container_width=True
+        )
+        st.caption("n=51 / 540 / 184 -- from `mode_comparison_findings.md`.")
+    with sp2:
+        speed_b = pd.DataFrame({"MODE": MODES, "Mean mph": [14.4, 17.9, 16.3], "n": [101, 582, 210]})
+        fig = px.bar(speed_b, x="MODE", y="Mean mph", color="MODE", color_discrete_map=MODE_COLORS,
+                     category_orders={"MODE": MODES}, text="Mean mph")
+        fig.update_traces(textposition="outside")
+        fig.update_layout(showlegend=False, xaxis_title=None)
+        st.plotly_chart(
+            style_fig(fig, title="Mean Crash Speed (extraction run 2)", height=340), use_container_width=True
+        )
+        st.caption("n=101 / 582 / 210 -- from `mode_comparison_findings_supplement.md`.")
+    insight(
+        "Both independent narrative-text speed extractions agree on direction and rough "
+        "magnitude: e-bikes crash at meaningfully higher speed than pedal bikes (+44% median in "
+        "run 1), e-scooters land in between. Speed is only recorded/extractable in a small "
+        "fraction of narratives (<1% of all crashes have a populated <code>MICROMOBILITY_SPEED_MPH</code> "
+        "field) -- treat both charts as directional, not precise population estimates. Still, "
+        "this is corroborated independently by the narrative-keyword <code>speed_related</code> "
+        "mention rate (4.7% bicycle vs. <b>11.3% e-bike</b> vs. 7.2% e-scooter) and supports "
+        "class-based e-bike speed regulation (the existing Class 1/2/3 framework)."
+    )
+
+    # ================================================================
+    # 5. Age & gender
+    # ================================================================
+    st.markdown("### 5. Age & Gender Skew Younger and More Female for E-Scooter")
+    ag1, ag2 = st.columns(2)
+    with ag1:
+        age_df = pd.DataFrame({"MODE": MODES, "Median age": [38, 33, 26]})
+        fig = px.bar(age_df, x="MODE", y="Median age", color="MODE", color_discrete_map=MODE_COLORS,
+                     category_orders={"MODE": MODES}, text="Median age")
+        fig.update_traces(textposition="outside")
+        fig.update_layout(showlegend=False, xaxis_title=None)
+        st.plotly_chart(style_fig(fig, title="Median Rider Age", height=340), use_container_width=True)
+    with ag2:
+        gender_df = pd.DataFrame({"MODE": MODES, "Female share (%)": [19.5, 18.2, 31.1]})
+        fig = px.bar(gender_df, x="MODE", y="Female share (%)", color="MODE", color_discrete_map=MODE_COLORS,
+                     category_orders={"MODE": MODES}, text="Female share (%)")
+        fig.update_traces(textposition="outside")
+        fig.update_layout(showlegend=False, xaxis_title=None)
+        st.plotly_chart(style_fig(fig, title="Female Rider Share", height=340), use_container_width=True)
+    insight(
+        "Median age drops from 38 (bicycle) to 33 (e-bike) to 26 (e-scooter), while female "
+        "share rises from ~19% (bicycle/e-bike) to 31.1% (e-scooter). A bicycle-crash-history "
+        "safety campaign will miss the actual e-scooter population, which skews younger with "
+        "meaningfully more women riders -- age-targeted, campus/downtown-adjacent education is "
+        "a better fit than a generic \"share the road\" campaign. Separately, riders in "
+        "<b>incapacitating</b>-severity crashes specifically average just 30.7 years old for "
+        "e-scooter vs. 43.2 (bicycle) and 41.4 (e-bike) -- e-scooter's most severe non-fatal "
+        "crashes are disproportionately happening to young riders."
+    )
+
+    # ================================================================
+    # 6. Citations & driver behavior
+    # ================================================================
+    st.markdown("### 6. Citation Rates Diverge Sharply at the Fatal Tier")
+    cite_df = pd.DataFrame({
+        "MODE": MODES * 3,
+        "Tier": ["All crashes"] * 3 + ["KSI only"] * 3 + ["Fatal only"] * 3,
+        "Pct": [33.7, 29.3, 31.0, 38.8, 32.4, 33.9, 22.6, 14.4, 22.9],
+    })
+    fig = px.bar(
+        cite_df, x="Tier", y="Pct", color="MODE", barmode="group",
+        color_discrete_map=MODE_COLORS, category_orders={"MODE": MODES, "Tier": ["All crashes", "KSI only", "Fatal only"]},
+    )
+    fig.update_layout(yaxis_title="Driver citation rate (%)", xaxis_title=None)
+    st.plotly_chart(style_fig(fig, title="Citation Rate by Severity Tier, by Mode"), use_container_width=True)
+
+    behav_df = pd.DataFrame({
+        "MODE": MODES * 2,
+        "Flag": ["Alcohol-related driver"] * 3 + ["Drug-related driver"] * 3,
+        "Pct": [7.7, 1.1, 9.6, 5.9, 2.1, 5.5],
+    })
+    fig = px.bar(
+        behav_df, x="Flag", y="Pct", color="MODE", barmode="group",
+        color_discrete_map=MODE_COLORS, category_orders={"MODE": MODES},
+    )
+    fig.update_layout(yaxis_title="% of fatal crashes", xaxis_title=None)
+    st.plotly_chart(
+        style_fig(fig, title="Driver Impairment Flags in Fatal Crashes, by Mode", height=340),
+        use_container_width=True,
+    )
+    insight(
+        "Citation rates look similar across modes for all-crashes (29-34%) but diverge sharply "
+        "at the fatal tier: in fatal e-bike crashes, the at-fault driver is cited only "
+        "<b>14.4%</b> of the time -- roughly 8 points below both bicycle and e-scooter. N is "
+        "small here (95 drivers in fatal e-bike crashes, 73 for e-scooter, 2,142 for bicycle), "
+        "so treat as suggestive. Alcohol-related driver involvement in fatal crashes is highest "
+        "for e-scooter (9.6%) and lowest for e-bike (1.1%) -- distraction, speeding, and "
+        "aggressive-driving flags don't meaningfully differentiate modes at any severity tier."
+    )
+
+    # ================================================================
+    # 7. Geographic concentration
+    # ================================================================
+    st.markdown("### 7. Geographic Concentration: Statewide vs. a Handful of Metro Corridors")
+    geo1, geo2 = st.columns([3, 2])
+    with geo1:
+        cluster_df = pd.DataFrame({"MODE": MODES, "DBSCAN clusters (statewide)": [708, 4, 11]})
+        fig = px.bar(cluster_df, x="MODE", y="DBSCAN clusters (statewide)", color="MODE",
+                     color_discrete_map=MODE_COLORS, category_orders={"MODE": MODES},
+                     text="DBSCAN clusters (statewide)")
+        fig.update_traces(textposition="outside")
+        fig.update_layout(showlegend=False, xaxis_title=None)
+        st.plotly_chart(style_fig(fig, title="Number of Spatiotemporal Crash Clusters, by Mode", height=360),
+                         use_container_width=True)
+    with geo2:
+        st.markdown("**Largest known clusters**")
+        st.dataframe(
+            pd.DataFrame({
+                "Mode": ["E-Scooter", "E-Scooter", "E-Bike", "E-Bike"],
+                "Location": ["Miami Beach", "Downtown Miami / Brickell", "Key West", "Tampa / Clearwater"],
+                "Crashes": [227, 160, 58, 34],
+            }),
+            hide_index=True, use_container_width=True,
+        )
+        st.caption("Miami-Dade + Broward = 43% of all e-scooter crashes statewide (vs. 23% for bicycle in those two counties).")
+    insight(
+        "Bicycle crashes spread across 708 spatiotemporal clusters statewide; e-scooter has "
+        "only 11 and e-bike only 4 -- consistent with e-bike/e-scooter crashes concentrating in "
+        "a handful of dense urban/tourist corridors (Miami Beach, downtown Miami, Key West, "
+        "Tampa) rather than spreading statewide the way bicycle crashes do. Practically: "
+        "e-scooter/e-bike infrastructure investment doesn't need to be a statewide program -- it "
+        "can target a small number of identifiable metro corridors where shared-device fleets "
+        "actually operate, a cheaper and more targeted ask than a statewide mandate. None of "
+        "these clusters are flagged \"emerging\" -- likely too little early-period baseline data "
+        "to compute growth off of yet, not evidence the hotspots have stabilized."
+    )
+
+    # ================================================================
+    # 8. Narrative keyword themes
+    # ================================================================
+    st.markdown("### 8. Narrative Text Themes")
+    kw_df = pd.DataFrame({
+        "Keyword": ["speed_related", "sidewalk", "helmet", "failed_to_yield", "crosswalk", "hit_and_run"],
+        "Bicycle": [4.7, 37.3, 2.8, 11.8, 25.9, 3.6],
+        "E-Bike": [11.3, 45.3, 5.6, 8.7, 25.5, 4.0],
+        "E-Scooter": [7.2, 40.0, 3.1, 10.4, 29.0, 5.1],
+    })
+    kw_melt = kw_df.melt(id_vars="Keyword", var_name="MODE", value_name="Pct")
+    fig = go.Figure(go.Heatmap(
+        z=kw_df[MODES].values, x=MODES, y=kw_df["Keyword"],
+        colorscale="YlOrRd", colorbar=dict(title="% of narratives"),
+        text=kw_df[MODES].values, texttemplate="%{text}",
+    ))
+    st.plotly_chart(style_fig(fig, title="Keyword Mention Rate (% of narratives), by Mode", height=360),
+                     use_container_width=True)
+    insight(
+        "<code>sidewalk</code> is mentioned often across <i>all three</i> modes (37-45%), not "
+        "just e-scooter -- worth reading against Finding 2 above: the crash-<i>type</i> "
+        "classification shows a sharp e-scooter-specific skew toward pedestrian collisions, but "
+        "sidewalk <i>mentions</i> are common everywhere. Bicycles may ride on sidewalks about as "
+        "often but collide with vehicles/other bikes rather than pedestrians. "
+        "<code>helmet</code> mentions run ~2x higher for e-bike than bicycle/e-scooter -- unclear "
+        "if that's a real usage difference or just reporting emphasis. <code>hit_and_run</code> is "
+        "highest for e-scooter (5.1%). Caveat: this is regex keyword matching, not NLP "
+        "classification -- a lead generator for which narratives to read, not a precise rate."
+    )
+
+    # ================================================================
+    # 9. Road infrastructure context
+    # ================================================================
+    st.markdown("### 9. Road Infrastructure Context")
+    ri1, ri2, ri3 = st.columns(3)
+    with ri1:
+        ow_df = pd.DataFrame({"MODE": MODES, "One-way street crashes (%)": [4.1, 3.9, 6.1]})
+        fig = px.bar(ow_df, x="MODE", y="One-way street crashes (%)", color="MODE",
+                     color_discrete_map=MODE_COLORS, category_orders={"MODE": MODES},
+                     text="One-way street crashes (%)")
+        fig.update_traces(textposition="outside")
+        fig.update_layout(showlegend=False, xaxis_title=None)
+        st.plotly_chart(style_fig(fig, title="One-Way Street Crashes", height=320), use_container_width=True)
+    with ri2:
+        ic_df = pd.DataFrame({
+            "MODE": MODES * 2,
+            "Control": ["Stop-controlled"] * 3 + ["Signalized"] * 3,
+            "Pct": [38.2, 41.7, 41.8, 60.9, 57.5, 57.9],
+        })
+        fig = px.bar(ic_df, x="MODE", y="Pct", color="Control", barmode="stack",
+                     category_orders={"MODE": MODES}, color_discrete_sequence=["#FFA726", "#5C6BC0"])
+        fig.update_layout(yaxis_title="%", xaxis_title=None)
+        st.plotly_chart(style_fig(fig, title="Intersection Control Type", height=320), use_container_width=True)
+    with ri3:
+        lc_df = pd.DataFrame({"MODE": MODES, "Dark, unlit (%)": [5.4, 3.6, 3.1]})
+        fig = px.bar(lc_df, x="MODE", y="Dark, unlit (%)", color="MODE",
+                     color_discrete_map=MODE_COLORS, category_orders={"MODE": MODES},
+                     text="Dark, unlit (%)")
+        fig.update_traces(textposition="outside")
+        fig.update_layout(showlegend=False, xaxis_title=None)
+        st.plotly_chart(style_fig(fig, title="Dark, Unlit-Road Crashes", height=320), use_container_width=True)
+    insight(
+        "E-scooter crashes happen on one-way streets at 6.1% vs. 4.1% (bicycle) / 3.9% (e-bike) "
+        "-- about 50% higher, consistent with scooter-share concentration in dense downtown "
+        "grids. E-bike/e-scooter crashes also skew slightly more toward stop-controlled "
+        "intersections (41.7-41.8%) vs. bicycle (38.2%), with the difference mirrored in "
+        "signalized-intersection share. Bicycle has the highest share of crashes in dark, unlit "
+        "conditions (5.4% vs. 3.1-3.6%) -- likely reflects usage patterns (utility/commuting "
+        "bicycling at night vs. daytime e-bike/scooter trips) more than a road-design effect. "
+        "Weather shows no meaningful mode differences (all three ~85-87% clear-weather)."
+    )
+
+    # ================================================================
+    # 10. Crash causation highlights (live, from the Crash Causation tab)
+    # ================================================================
+    st.markdown("### 10. Crash Causation Highlights")
+    st.caption(
+        "Unlike the sections above, this one is **live** -- computed from the same narrative-"
+        "classified causation data as the Crash Causation tab, filtered to the modes currently "
+        "selected in the sidebar. See that tab for the full breakdown."
+    )
+    if cause_raw is not None and "primary_cause" in cause_raw.columns:
+        chdf = cause_raw[cause_raw["MODE"].isin(sel_modes)].copy()
+        if MAIN_CRASH_ID_COL:
+            chdf = chdf[chdf["REPORT_NUMBER"].isin(set(df[MAIN_CRASH_ID_COL].astype(str)))]
+        if len(chdf):
+            ch1, ch2 = st.columns(2)
+            with ch1:
+                att2 = chdf["ATTRIBUTION"].value_counts(normalize=True).reindex(
+                    list(ATTRIBUTION_COLORS.keys())
+                ).fillna(0) * 100
+                fig = go.Figure(go.Pie(
+                    labels=att2.index, values=att2.values, hole=0.5,
+                    marker=dict(colors=[ATTRIBUTION_COLORS[k] for k in att2.index]),
+                    textinfo="label+percent",
+                ))
+                st.plotly_chart(style_fig(fig, title="Fault Attribution (Current Selection)", height=340),
+                                 use_container_width=True)
+            with ch2:
+                sc2 = chdf.groupby(["MODE", "speed_contributing"], observed=True).size().reset_index(name="count")
+                sc2["pct"] = sc2.groupby("MODE")["count"].transform(lambda s: s / s.sum() * 100)
+                fig = px.bar(
+                    sc2[sc2["speed_contributing"] == "yes"], x="MODE", y="pct", color="MODE",
+                    color_discrete_map=MODE_COLORS, text="pct",
+                )
+                fig.update_traces(texttemplate="%{text:.1f}%", textposition="outside")
+                fig.update_layout(showlegend=False, yaxis_title="% flagged speed-contributing", xaxis_title=None)
+                st.plotly_chart(style_fig(fig, title="Speed Flagged as Contributing (Driver or Rider), by Mode", height=340),
+                                 use_container_width=True)
+                st.caption(
+                    "Either party's speed, not rider-only -- see the caveat on the Crash "
+                    "Causation tab. For rider-speed-specific numbers, see Section 4 above."
+                )
+            infra_pct2 = chdf["INFRA_LABEL"].value_counts(normalize=True) * 100
+            bl = chdf[chdf["INFRA_LABEL"] == "Bike lane"]
+            bl_top = bl["CAUSE_LABEL"].value_counts(normalize=True).nlargest(1) * 100 if len(bl) else None
+            sw2 = chdf[chdf["INFRA_LABEL"] == "Sidewalk"]
+            sw_combo = sw2["CAUSE_LABEL"].value_counts(normalize=True).reindex(
+                ["Sidewalk driveway conflict", "Driver failed to yield turning"]
+            ).sum() * 100 if len(sw2) else 0
+            bl_text = (
+                f"In bike lanes specifically, <b>{bl_top.index[0]}</b> accounts for "
+                f"{bl_top.iloc[0]:.1f}% of bike-lane crashes -- infrastructure alone doesn't "
+                f"remove the yielding problem. "
+                if bl_top is not None and len(bl_top) else ""
+            )
+            insight(
+                f"Fault splits close to evenly between driver- and non-motorist-attributable "
+                f"causes in the current selection. Sidewalk + crosswalk account for "
+                f"{infra_pct2.get('Sidewalk', 0) + infra_pct2.get('Crosswalk', 0):.1f}% of "
+                f"narrative-classified crashes -- about half happen where the rider wasn't in "
+                f"the road at all. {bl_text}"
+                f"On sidewalks, driveway conflicts plus drivers failing to yield while turning "
+                f"together explain {sw_combo:.1f}% of sidewalk crashes -- sidewalk risk looks "
+                f"like a driveway-crossing problem more than a general road-crossing one."
+            )
+        else:
+            st.info("No causation-classified crashes in the current filter selection.")
+    else:
+        st.info(f"No `{DEFAULT_CAUSE_PATH}` loaded -- add it under the Data Source panel to see this section.")
+
+    # ================================================================
+    # Data-quality / caveats
+    # ================================================================
+    st.markdown("---")
+    st.markdown("### Data-Quality Notes Carried Over From Both Reports")
+    st.markdown(
+        """
+- **`QWEN_CLASS`** is tautologically derived from `MODE` (Cramer's V = 1.0) -- don't cite it as an independent finding.
+- **`IN_QWEN_NARRATIVES`** is ~100% True for E-Bike/E-Scooter but only ~7% for Bicycle because the bicycle-only source population was never run through the narrative classifier -- that's pipeline coverage, not rider behavior.
+- **Hotspot clustering isn't usable for e-bike/e-scooter yet** -- 708 bicycle clusters vs. only 4 (e-bike) / 11 (e-scooter), each mode using a different early/late split year, an artifact of small early-year sample sizes rather than a real spatial finding.
+- **Three tables came back completely empty**: `context_class_by_mode.csv`, `lane_count_by_mode.csv`, `median_type_by_mode.csv` -- likely an upstream join/filter issue worth checking on the HiPerGator side.
+- **`contributing_factors_by_mode.csv` and `top_charges_active_modes.csv`** are aggregated across all modes despite their filenames -- not usable for a by-mode breakdown as-is.
+- **`MICROMOBILITY_SPEED_MPH`** is populated for only 0.7% of all crashes (775 of 113,004) -- both speed charts above are directional, not precise population estimates.
+- **The YEAR effect is an adoption-curve confound**, not a behavioral difference -- e-bike/e-scooter crash counts are near-zero pre-2021 and 30-35%+ of their mode's total by 2025. A true rate comparison would need an exposure denominator (riders, trips, or registered devices) this dataset doesn't have.
+- **Section 10 (Crash Causation Highlights) is live**, unlike the rest of this tab -- it recomputes from `cause_analysis_export.csv` filtered to the sidebar's current Mode/Year/Severity/etc. selection, so its numbers will move as you change filters while every other section on this tab stays fixed.
+"""
+    )
+
+    render_pipeline_figures("tab9")
 
 
 st.markdown(
