@@ -20,6 +20,16 @@ import plotly.express as px
 import plotly.graph_objects as go
 import streamlit as st
 
+# geopandas/shapely are optional -- only needed for the census-tract spatial
+# join maps in the When & Where tab. Everything else in the dashboard works
+# fine without them.
+try:
+    import geopandas as gpd
+    from shapely.geometry import Point
+    GEOPANDAS_AVAILABLE = True
+except ImportError:
+    GEOPANDAS_AVAILABLE = False
+
 # ============================================================================
 # PAGE CONFIG + THEME
 # ============================================================================
@@ -448,6 +458,24 @@ def load_hotspots(path_or_buffer, _mtime=None):
 
 
 @st.cache_data
+def load_tracts(path_or_buffer, _mtime=None):
+    """Census tract boundaries (+ population) for the spatial-join maps in
+    the When & Where tab. Returns a GeoDataFrame in EPSG:4326, or None if
+    geopandas isn't installed / the file can't be read."""
+    if not GEOPANDAS_AVAILABLE:
+        return None
+    try:
+        tracts = gpd.read_file(path_or_buffer)
+        if tracts.crs is None:
+            tracts = tracts.set_crs(4326)
+        else:
+            tracts = tracts.to_crs(4326)
+        return tracts
+    except Exception:
+        return None
+
+
+@st.cache_data
 def load_cause_data(path_or_buffer, _mtime=None):
     """LLM narrative-classified crash causation (one row per crash) --
     primary_cause / infrastructure_type / speed_contributing, built from
@@ -484,6 +512,21 @@ with st.sidebar:
         narrative_src = file_input(f"Upload {DEFAULT_NARRATIVE_PATH}", DEFAULT_NARRATIVE_PATH, "narrative_upload")
         hotspot_src = file_input(f"Upload {DEFAULT_HOTSPOT_PATH}", DEFAULT_HOTSPOT_PATH, "hotspot_upload")
         cause_src = file_input(f"Upload {DEFAULT_CAUSE_PATH}", DEFAULT_CAUSE_PATH, "cause_upload")
+    with st.expander("Optional: census tract boundaries (for tract-level maps)"):
+        st.caption(
+            "GeoJSON with one row per Florida census tract: a `GEOID` column, "
+            "a total-population column, and `geometry`. Build it once with "
+            "TIGER/Line tract shapefiles (`tl_2023_12_tract`) joined to ACS "
+            "table B01003 (total population) by GEOID, e.g. via `tidycensus` "
+            "or the Census API, then `to_crs(4326)` and export as GeoJSON."
+        )
+        tract_up = st.file_uploader("Upload census_tracts.geojson", type=["geojson", "json"], key="tract_upload")
+        tract_src = tract_up if tract_up is not None else (
+            "census_tracts.geojson" if os.path.exists("census_tracts.geojson") else None
+        )
+        tract_pop_col = st.text_input(
+            "Population column name in that file", value="POPULATION", key="tract_pop_col"
+        )
 
 if main_src is not None:
     df_raw = load_data(main_src, _mtime=_mtime_key(main_src))
@@ -502,6 +545,7 @@ meta_raw = load_meta(meta_src, _mtime=_mtime_key(meta_src)) if meta_src is not N
 narrative_raw = load_narratives(narrative_src, _mtime=_mtime_key(narrative_src)) if narrative_src is not None else None
 hotspot_raw = load_hotspots(hotspot_src, _mtime=_mtime_key(hotspot_src)) if hotspot_src is not None else None
 cause_raw = load_cause_data(cause_src, _mtime=_mtime_key(cause_src)) if cause_src is not None else None
+tracts_raw = load_tracts(tract_src, _mtime=_mtime_key(tract_src)) if tract_src is not None else None
 
 MAIN_CRASH_ID_COL = find_col(df_raw, CRASH_ID_CANDIDATES)
 DEMO_CRASH_ID_COL = find_col(demo_raw, CRASH_ID_CANDIDATES) if demo_raw is not None else None
@@ -850,13 +894,34 @@ st.write("")
 # ============================================================================
 # HELPERS
 # ============================================================================
-def style_fig(fig, height=380, title=None):
+def fmt_n(n):
+    """Consistent 'n = 1,234' formatting for figure subtitles/captions."""
+    try:
+        return f"n = {int(n):,}"
+    except (TypeError, ValueError):
+        return f"n = {n}"
+
+
+def style_fig(fig, height=380, title=None, n=None):
+    """n: optional sample size (int, or dict of {group_label: count}) shown
+    as a light subtitle under the chart title, e.g. 'n = 1,234' or
+    'Bicycle n=812 | E-Bike n=201 | E-Scooter n=190' -- so a reader never has
+    to guess how many records a %/rate chart is built on."""
+    full_title = title
+    if title and n is not None:
+        if isinstance(n, dict):
+            n_txt = " &nbsp;|&nbsp; ".join(f"{k} n={v:,}" for k, v in n.items())
+        else:
+            n_txt = fmt_n(n)
+        full_title = (
+            f"{title}<br><span style='font-size:11px;font-weight:400;color:#6b7280'>{n_txt}</span>"
+        )
     fig.update_layout(
         font=PLOT_FONT,
         paper_bgcolor=PLOT_BG,
         plot_bgcolor=PLOT_BG,
-        height=height,
-        margin=dict(l=10, r=10, t=56 if title else 26, b=10),
+        height=height + (16 if (title and n is not None) else 0),
+        margin=dict(l=10, r=10, t=(70 if (title and n is not None) else 56) if title else 26, b=10),
         # Centered (not right-anchored) so a full "Bicycle / E-Bike /
         # E-Scooter" legend has room on both sides instead of overflowing
         # past the chart's right edge and getting clipped mid-word. Legend
@@ -866,8 +931,22 @@ def style_fig(fig, height=380, title=None):
             orientation="h", yanchor="bottom", y=1.02, xanchor="center", x=0.5,
             title=dict(text=""), font=dict(size=11),
         ),
-        title=dict(text=title, font=dict(size=15, family=PLOT_FONT["family"], color="#12172b")) if title else None,
+        title=dict(text=full_title, font=dict(size=15, family=PLOT_FONT["family"], color="#12172b")) if full_title else None,
     )
+    return fig
+
+
+def add_count_labels(fig, counts, pct_values=None, fmt="{:,}"):
+    """Overlay raw-count text onto a bar trace that's otherwise plotted as a
+    percent/rate, so the reader sees both at once. `counts` must be aligned
+    (same order) with the trace's x/y categories. If pct_values is given,
+    labels read '37.2% (n=118)'; otherwise just the count."""
+    counts = list(counts)
+    if pct_values is not None:
+        labels = [f"{p:.1f}% (n={c:,.0f})" for p, c in zip(pct_values, counts)]
+    else:
+        labels = [fmt.format(c) for c in counts]
+    fig.update_traces(text=labels, textposition="outside")
     return fig
 
 
@@ -1155,27 +1234,46 @@ with tab2:
             sev_mode, x="MODE", y="pct", color="S4_CRASH_SEVERITY",
             color_discrete_map=SEVERITY_COLORS,
             category_orders={"MODE": MODES, "S4_CRASH_SEVERITY": SEVERITY_ORDER},
+            custom_data=["count"],
+        )
+        fig.update_traces(
+            texttemplate="%{customdata[0]:,}", textposition="inside", textfont=dict(size=10, color="white"),
         )
         fig.update_layout(yaxis_title="% of crashes", xaxis_title=None, barmode="stack")
-        st.plotly_chart(style_fig(fig, title="Injury Severity Mix by Mode"), use_container_width=True)
+        mode_n = df.groupby("MODE", observed=True).size().reindex(MODES).fillna(0).astype(int).to_dict()
+        st.plotly_chart(
+            style_fig(fig, title="Injury Severity Mix by Mode", n=mode_n), use_container_width=True
+        )
+        st.caption("Segment labels are raw crash counts; bar height is % of that mode's crashes.")
 
     with c2:
+        mode_sizes = {m: int((df["MODE"] == m).sum()) for m in MODES}
+        fatal_n = {m: int(((df["MODE"] == m) & (df["S4_CRASH_SEVERITY"] == "Fatality")).sum()) for m in MODES}
+        serious_n = {m: int(((df["MODE"] == m) & (df["S4_CRASH_SEVERITY"] == "Serious Injury")).sum()) for m in MODES}
         rate_df = pd.DataFrame({
             "MODE": MODES,
-            "Fatal %": [
-                (df[df["MODE"] == m]["S4_CRASH_SEVERITY"] == "Fatality").mean() * 100
-                if (df["MODE"] == m).any() else 0 for m in MODES
-            ],
-            "Serious Injury %": [
-                (df[df["MODE"] == m]["S4_CRASH_SEVERITY"] == "Serious Injury").mean() * 100
-                if (df["MODE"] == m).any() else 0 for m in MODES
-            ],
+            "Fatal %": [fatal_n[m] / mode_sizes[m] * 100 if mode_sizes[m] else 0 for m in MODES],
+            "Serious Injury %": [serious_n[m] / mode_sizes[m] * 100 if mode_sizes[m] else 0 for m in MODES],
         })
         fig = go.Figure()
-        fig.add_bar(name="Fatal %", x=rate_df["MODE"], y=rate_df["Fatal %"], marker_color="#B71C1C")
-        fig.add_bar(name="Serious Injury %", x=rate_df["MODE"], y=rate_df["Serious Injury %"], marker_color="#EF9A9A")
+        fig.add_bar(
+            name="Fatal %", x=rate_df["MODE"], y=rate_df["Fatal %"], marker_color="#B71C1C",
+            text=[f"{v:.2f}% (n={fatal_n[m]:,})" for m, v in zip(rate_df["MODE"], rate_df["Fatal %"])],
+            textposition="outside",
+        )
+        fig.add_bar(
+            name="Serious Injury %", x=rate_df["MODE"], y=rate_df["Serious Injury %"], marker_color="#EF9A9A",
+            text=[f"{v:.1f}% (n={serious_n[m]:,})" for m, v in zip(rate_df["MODE"], rate_df["Serious Injury %"])],
+            textposition="outside",
+        )
         fig.update_layout(barmode="group", yaxis_title="%")
-        st.plotly_chart(style_fig(fig, title="Fatal & Serious Injury Rate"), use_container_width=True)
+        st.plotly_chart(
+            style_fig(fig, title="Fatal & Serious Injury Rate", n=mode_sizes), use_container_width=True
+        )
+        st.caption(
+            "Denominator for each mode's % is that mode's total crash count in the current "
+            "filter (shown as n= in the subtitle); bar labels give the numerator count too."
+        )
 
     c3, c4 = st.columns(2)
     with c3:
@@ -1191,19 +1289,29 @@ with tab2:
             sev_yr, x="YEAR", y="pct", color="S4_CRASH_SEVERITY",
             color_discrete_map=SEVERITY_COLORS,
             category_orders={"S4_CRASH_SEVERITY": SEVERITY_ORDER},
+            custom_data=["count"],
         )
+        fig.update_traces(hovertemplate="%{x}: %{y:.1f}%% (n=%{customdata[0]:,})<extra>%{fullData.name}</extra>")
         fig.update_layout(yaxis_title="% of that year's crashes")
-        st.plotly_chart(style_fig(fig, title="Severity Mix Over Time (% of Crashes)"), use_container_width=True)
+        st.plotly_chart(
+            style_fig(fig, title="Severity Mix Over Time (% of Crashes)", n=total),
+            use_container_width=True,
+        )
+        st.caption("Hover a band for the raw crash count behind that year/severity slice.")
 
     with c4:
+        mode_sizes4 = {m: int((df["MODE"] == m).sum()) for m in MODES}
+        mv_n = {m: int(((df["MODE"] == m) & (df["mv_involved"] == True)).sum()) for m in MODES}  # noqa: E712
         mv_df = df.groupby("MODE", observed=True)["mv_involved"].mean().reindex(MODES).fillna(0) * 100
         fig = go.Figure(go.Bar(
             x=mv_df.index, y=mv_df.values,
             marker_color=[MODE_COLORS[m] for m in mv_df.index],
-            text=[f"{v:.0f}%" for v in mv_df.values], textposition="outside",
+            text=[f"{v:.0f}% (n={mv_n.get(m, 0):,})" for m, v in mv_df.items()], textposition="outside",
         ))
         fig.update_layout(yaxis_title="% crashes with MV involved", yaxis_range=[0, 110])
-        st.plotly_chart(style_fig(fig, title="Motor Vehicle Involvement by Mode"), use_container_width=True)
+        st.plotly_chart(
+            style_fig(fig, title="Motor Vehicle Involvement by Mode", n=mode_sizes4), use_container_width=True
+        )
 
     fars = df[df["FARS_LANDUSE"].notna()]
     if len(fars):
@@ -1236,7 +1344,7 @@ with tab3:
             category_orders={"DOW": DOW_ORDER, "MODE": MODES},
         )
         fig.update_layout(xaxis_title=None, yaxis_title="Crashes")
-        st.plotly_chart(style_fig(fig, title="Crashes by Day of Week"), use_container_width=True)
+        st.plotly_chart(style_fig(fig, title="Crashes by Day of Week", n=total), use_container_width=True)
 
     with c2:
         dn_mode = df.groupby(["MODE", "DAY_NIGHT"], observed=True).size().reset_index(name="count")
@@ -1244,10 +1352,15 @@ with tab3:
         fig = px.bar(
             dn_mode, x="MODE", y="pct", color="DAY_NIGHT",
             color_discrete_map={"Day": "#FDD835", "Night": "#283593"},
-            category_orders={"MODE": MODES},
+            category_orders={"MODE": MODES}, custom_data=["count"],
         )
+        fig.update_traces(texttemplate="%{y:.0f}%<br>(n=%{customdata[0]:,})", textposition="inside",
+                           textfont=dict(size=10, color="#12172b"))
         fig.update_layout(yaxis_title="% of crashes", xaxis_title=None, barmode="stack")
-        st.plotly_chart(style_fig(fig, title="Day vs. Night Share by Mode"), use_container_width=True)
+        dn_mode_n = dn_mode.groupby("MODE")["count"].sum().reindex(MODES).fillna(0).astype(int).to_dict()
+        st.plotly_chart(
+            style_fig(fig, title="Day vs. Night Share by Mode", n=dn_mode_n), use_container_width=True
+        )
 
     c3, c4 = st.columns(2)
     with c3:
@@ -1256,10 +1369,15 @@ with tab3:
         fig = px.bar(
             loc_mode, x="MODE", y="pct", color="LOC_TYPE",
             color_discrete_map={"Intersection": "#5C6BC0", "Segment": "#26A69A"},
-            category_orders={"MODE": MODES},
+            category_orders={"MODE": MODES}, custom_data=["count"],
         )
+        fig.update_traces(texttemplate="%{y:.0f}%<br>(n=%{customdata[0]:,})", textposition="inside",
+                           textfont=dict(size=10, color="white"))
         fig.update_layout(yaxis_title="% of crashes", xaxis_title=None, barmode="stack")
-        st.plotly_chart(style_fig(fig, title="Intersection vs. Segment by Mode"), use_container_width=True)
+        loc_mode_n = loc_mode.groupby("MODE")["count"].sum().reindex(MODES).fillna(0).astype(int).to_dict()
+        st.plotly_chart(
+            style_fig(fig, title="Intersection vs. Segment by Mode", n=loc_mode_n), use_container_width=True
+        )
 
     with c4:
         light_top = df["LIGHT_CONDITION"].value_counts().nlargest(6).index
@@ -1272,11 +1390,17 @@ with tab3:
         lm["pct"] = lm.apply(lambda r: r["count"] / mode_totals.get(r["MODE"], 1) * 100, axis=1)
         fig = px.bar(
             lm, y="LIGHT_CONDITION", x="pct", color="MODE", orientation="h", barmode="group",
-            color_discrete_map=MODE_COLORS, category_orders={"MODE": MODES},
+            color_discrete_map=MODE_COLORS, category_orders={"MODE": MODES}, custom_data=["count"],
         )
+        fig.update_traces(texttemplate="%{x:.0f}% (n=%{customdata[0]:,})", textposition="outside",
+                           textfont=dict(size=9))
         fig.update_layout(yaxis_title=None, xaxis_title="% of that mode's crashes",
                            yaxis={"categoryorder": "total ascending"})
-        st.plotly_chart(style_fig(fig, title="Light Conditions (% Within Mode)"), use_container_width=True)
+        light_n = {m: int(mode_totals.get(m, 0)) for m in MODES}
+        st.plotly_chart(
+            style_fig(fig, title="Light Conditions (% Within Mode)", n=light_n, height=420),
+            use_container_width=True,
+        )
 
     c5, c6 = st.columns(2)
     with c5:
@@ -1286,11 +1410,17 @@ with tab3:
         wm["pct"] = wm.apply(lambda r: r["count"] / mode_totals.get(r["MODE"], 1) * 100, axis=1)
         fig = px.bar(
             wm, y="WEATHER_CONDITION", x="pct", color="MODE", orientation="h", barmode="group",
-            color_discrete_map=MODE_COLORS, category_orders={"MODE": MODES},
+            color_discrete_map=MODE_COLORS, category_orders={"MODE": MODES}, custom_data=["count"],
         )
+        fig.update_traces(texttemplate="%{x:.0f}% (n=%{customdata[0]:,})", textposition="outside",
+                           textfont=dict(size=9))
         fig.update_layout(yaxis_title=None, xaxis_title="% of that mode's crashes",
                            yaxis={"categoryorder": "total ascending"})
-        st.plotly_chart(style_fig(fig, title="Weather Conditions (% Within Mode)"), use_container_width=True)
+        wthr_n = {m: int(mode_totals.get(m, 0)) for m in MODES}
+        st.plotly_chart(
+            style_fig(fig, title="Weather Conditions (% Within Mode)", n=wthr_n, height=400),
+            use_container_width=True,
+        )
 
     with c6:
         top_counties = df["COUNTY_NAME"].value_counts().nlargest(15).index
@@ -1302,7 +1432,10 @@ with tab3:
         )
         fig.update_layout(yaxis_title=None, xaxis_title="Crashes",
                            yaxis={"categoryorder": "total ascending"})
-        st.plotly_chart(style_fig(fig, title="Top 15 Counties", height=430), use_container_width=True)
+        st.plotly_chart(
+            style_fig(fig, title="Top 15 Counties", height=430, n=int(co_df.shape[0])),
+            use_container_width=True,
+        )
 
     st.markdown("#### Crash Locations")
     if LAT_COL and LON_COL:
@@ -1344,6 +1477,148 @@ with tab3:
             unsafe_allow_html=True,
         )
 
+    st.markdown("---")
+    st.markdown("#### Crashes by Census Tract")
+    st.markdown(
+        """<div class="section-note">
+        <b>Method:</b> each geocoded crash's point (lat/lon) is
+        <b>spatially joined</b> to the Florida census tract polygon it falls
+        inside of (a point-in-polygon join against 2023 TIGER/Line tract
+        boundaries, <code>geopandas.sjoin(..., predicate="within")</code>,
+        both layers in EPSG:4326 / WGS84). Every crash lands in exactly one
+        tract (or none, if its coordinates fall outside all tract polygons
+        -- e.g. bad geocodes). Crashes are then aggregated to
+        <code>GEOID</code> and joined to ACS total-population estimates to
+        build the three maps below. This gives a <i>rate</i> per tract
+        (crashes relative to who lives there), which raw point density on
+        the scatter map above can't show.
+        </div>""",
+        unsafe_allow_html=True,
+    )
+
+    if not GEOPANDAS_AVAILABLE:
+        st.warning(
+            "`geopandas` isn't installed in this environment, so the census-tract maps can't "
+            "render. Install it (`pip install geopandas shapely`) and re-run the dashboard."
+        )
+    elif tracts_raw is None:
+        st.info(
+            "No census tract boundary file loaded yet. Upload a `census_tracts.geojson` "
+            "(GEOID + population + geometry, see the **Optional: census tract boundaries** "
+            "panel in the sidebar) to enable these three maps."
+        )
+    elif not (LAT_COL and LON_COL):
+        st.info("No latitude/longitude columns in the loaded export, so points can't be joined to tracts.")
+    elif "GEOID" not in tracts_raw.columns:
+        st.warning("The uploaded tract file has no `GEOID` column -- can't aggregate to it.")
+    else:
+        geo_pts = df[[LAT_COL, LON_COL, "MODE"]].copy()
+        geo_pts[LAT_COL] = pd.to_numeric(geo_pts[LAT_COL], errors="coerce")
+        geo_pts[LON_COL] = pd.to_numeric(geo_pts[LON_COL], errors="coerce")
+        geo_pts = geo_pts[geo_pts[LAT_COL].between(24, 31) & geo_pts[LON_COL].between(-88, -79)]
+
+        if len(geo_pts) == 0:
+            st.info("No crashes with valid Florida coordinates in the current filter selection.")
+        else:
+            pts_gdf = gpd.GeoDataFrame(
+                geo_pts,
+                geometry=gpd.points_from_xy(geo_pts[LON_COL], geo_pts[LAT_COL]),
+                crs=4326,
+            )
+            joined = gpd.sjoin(pts_gdf, tracts_raw[["GEOID", "geometry"]], how="left", predicate="within")
+            n_matched = joined["GEOID"].notna().sum()
+            n_unmatched = len(joined) - n_matched
+            st.caption(
+                f"**{n_matched:,}** of **{len(joined):,}** geocoded, filtered crashes "
+                f"(n = {len(joined):,}) matched to a tract; **{n_unmatched:,}** fell outside "
+                f"every tract polygon (bad/edge-of-state geocodes) and are excluded from the maps below."
+            )
+            joined = joined.dropna(subset=["GEOID"])
+
+            if len(joined) == 0:
+                st.info("No crashes matched a census tract in the current filter selection.")
+            else:
+                tract_counts = (
+                    joined.groupby(["GEOID", "MODE"], observed=True).size()
+                    .unstack(fill_value=0).reindex(columns=MODES, fill_value=0)
+                )
+                tract_counts["TOTAL_MICRO"] = tract_counts[MODES].sum(axis=1)
+                tract_geo = tracts_raw.merge(tract_counts.reset_index(), on="GEOID", how="left")
+                for c in list(MODES) + ["TOTAL_MICRO"]:
+                    tract_geo[c] = tract_geo[c].fillna(0)
+
+                has_pop = tract_pop_col in tract_geo.columns
+                if has_pop:
+                    tract_geo[tract_pop_col] = pd.to_numeric(tract_geo[tract_pop_col], errors="coerce")
+                    tract_geo["EBIKE_PER_10K_POP"] = np.where(
+                        tract_geo[tract_pop_col] > 0,
+                        tract_geo["E-Bike"] / tract_geo[tract_pop_col] * 10_000, np.nan,
+                    )
+                tract_geo["EBIKE_SHARE_OF_MICRO"] = np.where(
+                    tract_geo["TOTAL_MICRO"] > 0,
+                    tract_geo["E-Bike"] / tract_geo["TOTAL_MICRO"] * 100, np.nan,
+                )
+
+                def choropleth(gdf_col, value_col, title, colorbar_title, subtitle_n, colorscale="YlOrRd"):
+                    fig = px.choropleth_mapbox(
+                        tract_geo, geojson=tract_geo.geometry.__geo_interface__,
+                        locations=tract_geo.index, color=gdf_col,
+                        color_continuous_scale=colorscale,
+                        mapbox_style="open-street-map", zoom=5.4,
+                        center={"lat": 27.8, "lon": -81.7}, opacity=0.7,
+                        labels={gdf_col: colorbar_title},
+                    )
+                    fig = style_fig(fig, height=520, title=title, n=subtitle_n)
+                    fig.update_layout(margin=dict(l=0, r=0, t=70, b=0))
+                    return fig
+
+                m1, m2 = st.columns(2)
+                with m1:
+                    st.plotly_chart(
+                        choropleth(
+                            "TOTAL_MICRO", "TOTAL_MICRO",
+                            "1. Micromobility Crashes per Tract (all modes)",
+                            "Crashes", n_matched,
+                        ),
+                        use_container_width=True,
+                    )
+                    st.caption("Raw crash count per tract, all three modes combined.")
+
+                with m2:
+                    if has_pop:
+                        st.plotly_chart(
+                            choropleth(
+                                "EBIKE_PER_10K_POP", "EBIKE_PER_10K_POP",
+                                "2. E-Bike Crashes per 10,000 Residents",
+                                "E-bike crashes / 10k pop", n_matched, colorscale="Reds",
+                            ),
+                            use_container_width=True,
+                        )
+                        st.caption(
+                            f"E-bike crash count in the tract \u00f7 tract population "
+                            f"(`{tract_pop_col}`) \u00d7 10,000 -- normalizes for the fact that "
+                            f"densely populated tracts will rack up more crashes by exposure alone."
+                        )
+                    else:
+                        st.info(
+                            f"Population column '{tract_pop_col}' not found in the tract file -- "
+                            f"can't compute crashes-per-capita. Check the column name in the sidebar."
+                        )
+
+                st.plotly_chart(
+                    choropleth(
+                        "EBIKE_SHARE_OF_MICRO", "EBIKE_SHARE_OF_MICRO",
+                        "3. E-Bike Share of All Micromobility Crashes per Tract (%)",
+                        "% e-bike", n_matched, colorscale="Purples",
+                    ),
+                    use_container_width=True,
+                )
+                st.caption(
+                    "E-bike crashes \u00f7 (bicycle + e-bike + e-scooter crashes) in that tract, as a "
+                    "%. Only meaningful where TOTAL_MICRO is non-trivial -- a tract with 1 total "
+                    "crash that happens to be an e-bike crash shows 100% here, so read this "
+                    "alongside Map 1's raw count, not in isolation."
+                )
 
     render_pipeline_figures("tab3")
 
@@ -1366,22 +1641,32 @@ with tab4:
                     "Pct": sub[f].mean() * 100 if n else 0,
                 })
         flag_df = pd.DataFrame(rows)
+        flag_n = {m: int((df["MODE"] == m).sum()) for m in MODES}
+        flag_df["N"] = flag_df["Mode"].map(flag_n)
+        flag_df["count"] = (flag_df["Pct"] / 100 * flag_df["N"]).round().astype(int)
         fig = px.bar(
             flag_df, y="Flag", x="Pct", color="Mode", orientation="h", barmode="group",
-            color_discrete_map=MODE_COLORS, category_orders={"Mode": MODES},
+            color_discrete_map=MODE_COLORS, category_orders={"Mode": MODES}, custom_data=["count"],
         )
+        fig.update_traces(texttemplate="%{x:.0f}% (n=%{customdata[0]:,})", textposition="outside", textfont=dict(size=9))
         fig.update_layout(xaxis_title="% of crashes for that mode", yaxis_title=None)
-        st.plotly_chart(style_fig(fig, title="Driver Behavior Flags by Mode", height=440), use_container_width=True)
+        st.plotly_chart(
+            style_fig(fig, title="Driver Behavior Flags by Mode", height=440, n=flag_n), use_container_width=True
+        )
 
     with c2:
+        cite_mode_n = {m: int((df["MODE"] == m).sum()) for m in MODES}
+        cite_n = {m: int(((df["MODE"] == m) & (df["CITED"] == True)).sum()) for m in MODES}  # noqa: E712
         cite_df = df.groupby("MODE", observed=True)["CITED"].mean().reindex(MODES).fillna(0) * 100
         fig = go.Figure(go.Bar(
             x=cite_df.index, y=cite_df.values,
             marker_color=[MODE_COLORS[m] for m in cite_df.index],
-            text=[f"{v:.0f}%" for v in cite_df.values], textposition="outside",
+            text=[f"{v:.0f}% (n={cite_n.get(m, 0):,})" for m, v in cite_df.items()], textposition="outside",
         ))
         fig.update_layout(yaxis_title="% crashes with citation", yaxis_range=[0, 110])
-        st.plotly_chart(style_fig(fig, title="Citation Rate by Mode"), use_container_width=True)
+        st.plotly_chart(
+            style_fig(fig, title="Citation Rate by Mode", n=cite_mode_n), use_container_width=True
+        )
 
         cite_yr = df.groupby(["YEAR", "MODE"], observed=True)["CITED"].mean().reset_index()
         cite_yr["CITED"] *= 100
@@ -1531,6 +1816,96 @@ with tab5:
             "Micromobility Speed (self-reported speed from crash narratives) isn't present in "
             "the currently loaded `power_bi_export.csv` -- re-run `eda_analysis_combined.py` and "
             "reload the CSV to pick it up."
+        )
+
+    st.markdown("---")
+    st.markdown("## Speed \u00d7 Infrastructure: Is Speed Higher When the Narrative Mentions Sidewalk Riding?")
+    if MICRO_SPEED_COL and narrative_raw is not None and "NARRATIVE_TEXT" in narrative_raw.columns and MAIN_CRASH_ID_COL:
+        INFRA_SPEED_THEMES = {
+            "Sidewalk riding": r"\bsidewalk\b",
+            "Crosswalk": r"\bcrosswalk\b",
+            "Bike lane": r"\bbike ?lane\b",
+            "Wrong-way / against traffic": r"\bwrong.?way\b|against traffic|facing traffic",
+        }
+        nmerge = narrative_raw[[c for c in ["REPORT_NUMBER", "NARRATIVE_TEXT"] if c in narrative_raw.columns]].copy()
+        nmerge["REPORT_NUMBER"] = nmerge["REPORT_NUMBER"].astype(str)
+        nmerge["NARRATIVE_TEXT"] = nmerge["NARRATIVE_TEXT"].fillna("").str.lower()
+
+        spd_infra = df[[MAIN_CRASH_ID_COL, "MODE", MICRO_SPEED_COL]].copy()
+        spd_infra[MAIN_CRASH_ID_COL] = spd_infra[MAIN_CRASH_ID_COL].astype(str)
+        spd_infra[MICRO_SPEED_COL] = pd.to_numeric(spd_infra[MICRO_SPEED_COL], errors="coerce")
+        spd_infra = spd_infra.merge(nmerge, left_on=MAIN_CRASH_ID_COL, right_on="REPORT_NUMBER", how="inner")
+        spd_infra = spd_infra[spd_infra[MICRO_SPEED_COL].notna()]
+
+        if len(spd_infra) < 10:
+            st.info(
+                f"Only {len(spd_infra):,} filtered crashes have both a narrative and a "
+                f"self-reported speed -- too few to compare. Try widening the sidebar filters."
+            )
+        else:
+            theme_pick = st.selectbox(
+                "Infrastructure/behavior theme to compare against speed",
+                list(INFRA_SPEED_THEMES.keys()), key="speed_infra_theme",
+            )
+            pattern = INFRA_SPEED_THEMES[theme_pick]
+            spd_infra["FLAG"] = spd_infra["NARRATIVE_TEXT"].str.contains(pattern, regex=True, na=False)
+            spd_infra["Group"] = np.where(spd_infra["FLAG"], f"{theme_pick} mentioned", "Not mentioned")
+
+            n_flag = int(spd_infra["FLAG"].sum())
+            n_noflag = int((~spd_infra["FLAG"]).sum())
+            group_n = {f"{theme_pick} mentioned": n_flag, "Not mentioned": n_noflag}
+
+            gcol1, gcol2 = st.columns([1.3, 1])
+            with gcol1:
+                fig = px.violin(
+                    spd_infra, x="Group", y=MICRO_SPEED_COL, color="Group", box=True, points="outliers",
+                    category_orders={"Group": [f"{theme_pick} mentioned", "Not mentioned"]},
+                    color_discrete_sequence=["#B71C1C", "#90A4AE"],
+                )
+                fig.update_layout(yaxis_title="Self-reported speed (mph)", xaxis_title=None, showlegend=False)
+                st.plotly_chart(
+                    style_fig(fig, title=f"Speed by Narrative Mention: {theme_pick}", n=group_n),
+                    use_container_width=True,
+                )
+
+            with gcol2:
+                med_flag = spd_infra.loc[spd_infra["FLAG"], MICRO_SPEED_COL].median() if n_flag else np.nan
+                med_noflag = spd_infra.loc[~spd_infra["FLAG"], MICRO_SPEED_COL].median() if n_noflag else np.nan
+                try:
+                    from scipy import stats as _stats
+                    if n_flag >= 5 and n_noflag >= 5:
+                        u_stat, p_val = _stats.mannwhitneyu(
+                            spd_infra.loc[spd_infra["FLAG"], MICRO_SPEED_COL],
+                            spd_infra.loc[~spd_infra["FLAG"], MICRO_SPEED_COL],
+                            alternative="two-sided",
+                        )
+                        p_txt = f"Mann-Whitney U p = {p_val:.3f}"
+                    else:
+                        p_txt = "Too few flagged narratives for a significance test"
+                except ImportError:
+                    p_txt = "scipy not installed -- no significance test computed"
+
+                st.markdown(
+                    f"""<div class="section-note">
+                    <b>Median speed, {theme_pick.lower()}:</b> {med_flag:.1f} mph (n={n_flag:,})<br>
+                    <b>Median speed, not mentioned:</b> {med_noflag:.1f} mph (n={n_noflag:,})<br>
+                    <b>{p_txt}</b><br><br>
+                    This is a blunt keyword match on free-text narratives, not a validated
+                    infrastructure classification -- treat it as a lead, not a final number.
+                    Small n for the "mentioned" group is common since most narratives don't
+                    explicitly call out sidewalk/crosswalk/bike-lane use.
+                    </div>""",
+                    unsafe_allow_html=True,
+                )
+    else:
+        missing_bits = []
+        if not MICRO_SPEED_COL:
+            missing_bits.append("`micromobility_speed` in `power_bi_export.csv`")
+        if narrative_raw is None:
+            missing_bits.append(f"`{DEFAULT_NARRATIVE_PATH}` (upload it in the sidebar)")
+        st.info(
+            "Speed \u00d7 infrastructure comparison needs both a self-reported speed column and "
+            "narrative text: missing " + " and ".join(missing_bits) + "."
         )
 
     if infra_cols_present:
@@ -2270,9 +2645,21 @@ with tab9:
     # ================================================================
     # Headline stat cards
     # ================================================================
+    _mode_n_hdr = {m: int((df["MODE"] == m).sum()) for m in MODES}
+    _fatal_n_hdr = {m: int(((df["MODE"] == m) & (df["S4_CRASH_SEVERITY"] == "Fatality")).sum()) for m in MODES}
+    _fatal_rate_hdr = {m: (_fatal_n_hdr[m] / _mode_n_hdr[m] if _mode_n_hdr[m] else np.nan) for m in MODES}
+    _bike_rate_hdr = _fatal_rate_hdr.get("Bicycle", np.nan)
+    _hdr_ratio = max(
+        (_fatal_rate_hdr.get("E-Bike", np.nan) / _bike_rate_hdr) if _bike_rate_hdr else np.nan,
+        (_fatal_rate_hdr.get("E-Scooter", np.nan) / _bike_rate_hdr) if _bike_rate_hdr else np.nan,
+    ) if _bike_rate_hdr else np.nan
+
     s1, s2, s3, s4 = st.columns(4)
-    stat_card(s1, "FATALITY RISK PER CRASH", "~7x higher",
-              "E-bike/e-scooter vs. bicycle -- the single largest effect in the data", "#B71C1C")
+    stat_card(
+        s1, "FATALITY RISK PER CRASH",
+        f"~{_hdr_ratio:.1f}x higher" if pd.notna(_hdr_ratio) else "~7x higher (static)",
+        "E-bike/e-scooter vs. bicycle, live for current filters -- see Section 1 below", "#B71C1C",
+    )
     stat_card(s2, "E-SCOOTER CRASHES", "50.2% pedestrian-involved",
               "vs. 13.9% bicycle -- ~3.6x higher", "#FF9800")
     stat_card(s3, "CRASH GROWTH, 2014-2025", "~200x / ~59x",
@@ -2284,28 +2671,66 @@ with tab9:
     st.markdown("---")
 
     # ================================================================
-    # 1. Fatality risk
+    # 1. Fatality risk -- LIVE (recomputed from the currently loaded/
+    # filtered df, using the exact same S4_CRASH_SEVERITY == "Fatality"
+    # definition as the Fatal & Serious Injury Rate chart on the Severity &
+    # Outcomes tab). This used to be a hardcoded [1.99, 14.17, 13.27]
+    # snapshot from the static mode_comparison_findings.md report, computed
+    # once off a full/unfiltered power_bi_export.csv at a different time.
+    # That's why it could show a starker ratio than the Severity & Outcomes
+    # tab: two different denominators (the static report's snapshot of the
+    # full dataset vs. whatever the sidebar filters happen to be) computed
+    # months apart, not two different underlying facts. Recomputing it live
+    # off the same df as tab2 removes that mismatch entirely.
     # ================================================================
     st.markdown("### 1. Fatality Risk Per Crash")
+    st.markdown(
+        """<div class="section-note">
+        \u26A0\uFE0F <b>This card was previously static</b> (hardcoded
+        1.99 / 14.17 / 13.27 fatalities-per-1,000 from an earlier offline
+        report) and could disagree with the <b>Severity & Outcomes</b> tab's
+        "Fatal & Serious Injury Rate" chart, which has always computed live
+        off the currently loaded/filtered data. That was the source of the
+        "why is it 7x here but not there" gap -- two snapshots of the data
+        taken at different times/filters, not two different findings. This
+        card now recomputes live from the same <code>S4_CRASH_SEVERITY</code>
+        field and the current sidebar filters, so it will always match tab 2.
+        </div>""",
+        unsafe_allow_html=True,
+    )
+    mode_n_s1 = {m: int((df["MODE"] == m).sum()) for m in MODES}
+    fatal_n_s1 = {m: int(((df["MODE"] == m) & (df["S4_CRASH_SEVERITY"] == "Fatality")).sum()) for m in MODES}
+    fatal_per_1k = {m: (fatal_n_s1[m] / mode_n_s1[m] * 1000 if mode_n_s1[m] else np.nan) for m in MODES}
     fatal_df = pd.DataFrame({
         "MODE": MODES,
-        "Fatalities per 1,000 crashes": [1.99, 14.17, 13.27],
+        "Fatalities per 1,000 crashes": [fatal_per_1k[m] for m in MODES],
     })
     fig = px.bar(
         fatal_df, x="MODE", y="Fatalities per 1,000 crashes", color="MODE",
-        color_discrete_map=MODE_COLORS, category_orders={"MODE": MODES}, text="Fatalities per 1,000 crashes",
+        color_discrete_map=MODE_COLORS, category_orders={"MODE": MODES},
     )
-    fig.update_traces(texttemplate="%{text:.2f}", textposition="outside")
+    fig.update_traces(
+        text=[f"{fatal_per_1k[m]:.2f} (n={fatal_n_s1[m]:,}/{mode_n_s1[m]:,})" for m in MODES],
+        textposition="outside",
+    )
     fig.update_layout(showlegend=False, xaxis_title=None)
-    st.plotly_chart(style_fig(fig, title="Fatalities per 1,000 Crashes, by Mode"), use_container_width=True)
+    st.plotly_chart(
+        style_fig(fig, title="Fatalities per 1,000 Crashes, by Mode (live)", n=mode_n_s1),
+        use_container_width=True,
+    )
+    bike_rate = fatal_per_1k.get("Bicycle", np.nan)
+    ebike_ratio = fatal_per_1k.get("E-Bike", np.nan) / bike_rate if bike_rate else np.nan
+    escoot_ratio = fatal_per_1k.get("E-Scooter", np.nan) / bike_rate if bike_rate else np.nan
     insight(
-        "A reported e-bike crash is ~7.1x more likely to be fatal than a bicycle crash; "
-        "e-scooter is ~6.7x. This holds even though non-fatal severity looks similar or "
-        "slightly milder for e-bike/e-scooter -- the fatality gap is a distinct signal, not "
-        "just a tail extension of a general severity gap. Fatal e-bike/e-scooter crashes are "
-        "also disproportionately urban (95.2% / 97.1% vs. 88.0% bicycle), so this isn't a "
-        "rural-highway story. This is the strongest single hook for a regulation/infrastructure "
-        "response in the whole dataset."
+        f"With the current sidebar filters, a reported e-bike crash is "
+        f"~{ebike_ratio:.1f}x as likely to be fatal as a bicycle crash, and e-scooter is "
+        f"~{escoot_ratio:.1f}x. In the earlier static full-dataset snapshot these ratios were "
+        f"~7.1x and ~6.7x -- the two won't always match exactly since this now respects Mode/"
+        f"Year/Severity filters, but they should tell the same directional story as the "
+        f"Severity & Outcomes tab's Fatal & Serious Injury Rate chart. Note the small "
+        f"fatality counts per mode above (n=) -- these are rates over rare events, so treat "
+        f"single-digit or low-double-digit numerators as noisy, especially once you narrow "
+        f"the filters."
     )
 
     # ================================================================
