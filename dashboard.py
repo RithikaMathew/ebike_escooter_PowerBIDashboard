@@ -289,31 +289,24 @@ section[data-testid="stSidebar"] [data-testid="stBaseButton-primary"]:hover * {
    render on a white background even inside the dark sidebar -- force their
    placeholder text ("Choose options"), chosen values, and dropdown arrow
    to a dark, readable color instead of inheriting the near-white sidebar
-   default. */
+   default.
+
+   IMPORTANT: this must never reach inside a tag chip (the colored
+   Mode/County pills). The previous version applied color/fill/opacity to
+   *every* descendant, including the chip's delete-"x" button -- forcing
+   opacity:1 on it made a hover-only highlight box permanently visible
+   behind the icon, and forcing its fill overrode the icon's own white-on-
+   color styling. Net effect: a stray dark/white box instead of a clean X.
+   The :not() clause below excludes the whole tag subtree up front so
+   Streamlit's own (already-correct) tag styling is left alone entirely,
+   rather than trying to patch it back afterward. */
 section[data-testid="stSidebar"] [data-baseweb="select"],
-section[data-testid="stSidebar"] [data-baseweb="select"] * {
+section[data-testid="stSidebar"] [data-baseweb="select"] *:not([data-baseweb="tag"], [data-baseweb="tag"] *) {
     color: #33395c !important;
     fill: #33395c !important;
     opacity: 1 !important;
 }
 
-/* The rule above is too broad for the colored tag chips (the selected
-   Mode/County/etc. pills) -- it was forcing their delete "x" icon's fill
-   to the same dark navy as the pill's own outline/box-shadow, which
-   collapses the X's cutout into a solid dark blob sitting inside a
-   stray white box. Re-assert white for everything inside a tag (text +
-   icon need contrast against the colored chip), and keep the icon's own
-   background transparent so no boxy artifact shows behind it. */
-section[data-testid="stSidebar"] [data-baseweb="select"] [data-baseweb="tag"],
-section[data-testid="stSidebar"] [data-baseweb="select"] [data-baseweb="tag"] * {
-    color: #ffffff !important;
-    fill: #ffffff !important;
-}
-section[data-testid="stSidebar"] [data-baseweb="select"] [data-baseweb="tag"] svg,
-section[data-testid="stSidebar"] [data-baseweb="select"] [data-baseweb="tag"] [role="presentation"] {
-    background-color: transparent !important;
-    box-shadow: none !important;
-}
 
 .dash-header {
     padding: 1.1rem 1.6rem;
@@ -2650,6 +2643,100 @@ with tab9:
         st.info(f"No `{DEFAULT_CAUSE_PATH}` loaded -- add it under the Data Source panel to see this section.")
 
     # ================================================================
+    # 11. Severity trend over time (aggregate, all modes pooled)
+    # ================================================================
+    st.markdown("### 11. Severity Trend Over Time (All Active Modes, Pooled)")
+    st.caption(
+        "This source table isn't split by mode -- 2025's total (13,125) matches "
+        "bicycle + e-bike + e-scooter combined for that year exactly."
+    )
+    sev_trend = pd.DataFrame({
+        "Year": [2014, 2015, 2016, 2017, 2018, 2019, 2020, 2021, 2022, 2023, 2024, 2025, 2026],
+        "Fatality %": [1.68, 1.86, 1.84, 1.67, 2.05, 1.99, 2.48, 2.63, 2.51, 2.34, 1.88, 1.80, 1.27],
+        "Serious Injury %": [11.66, 11.29, 11.25, 10.42, 10.76, 9.79, 10.82, 9.88, 9.37, 8.33, 8.53, 8.27, 8.08],
+    })
+    st1, st2 = st.columns(2)
+    with st1:
+        fig = px.line(sev_trend, x="Year", y="Fatality %", markers=True,
+                      color_discrete_sequence=["#C0392B"])
+        st.plotly_chart(style_fig(fig, title="Fatality Share by Year", height=320), use_container_width=True)
+    with st2:
+        fig = px.line(sev_trend, x="Year", y="Serious Injury %", markers=True,
+                      color_discrete_sequence=["#FF9800"])
+        st.plotly_chart(style_fig(fig, title="Serious-Injury Share by Year", height=320), use_container_width=True)
+    insight(
+        "Both fatality share and serious-injury share peaked around 2020-2022 and have "
+        "declined since, even as total crash volume nearly doubled (driven by e-bike/e-scooter "
+        "growth). This is consistent with two different stories this pooled table can't "
+        "separate on its own: genuine per-crash safety improvement, or e-scooter's crash mix "
+        "(which already skews toward the lowest incapacitating-injury share of the three modes, "
+        "per Section 1 above) increasingly diluting the aggregate as it becomes a growing share "
+        "of total crashes. A by-mode version of this table would settle which story is right -- "
+        "worth requesting before citing this as a safety-improvement trend."
+    )
+
+    # ================================================================
+    # 12. Pedestrian crash sub-types
+    # ================================================================
+    st.markdown("### 12. Pedestrian Crash Sub-Types")
+    ped_df = pd.DataFrame({
+        "Circumstance": ["Unusual Circumstances", "Crossing Roadway (Vehicle Not Turning)",
+                          "Crossing Roadway (Vehicle Turning)", "Crossing Driveway or Alley",
+                          "Backing Vehicle", "Off Roadway", "Walking Along Roadway",
+                          "Dash/Dart-Out", "Other categories (5)"],
+        "Count": [281, 77, 50, 34, 28, 28, 13, 13, 27],
+    })
+    fig = px.bar(ped_df.sort_values("Count"), x="Count", y="Circumstance", orientation="h",
+                 color_discrete_sequence=["#5C6BC0"])
+    fig.update_layout(yaxis_title=None, xaxis_title="Crashes (n=551)")
+    st.plotly_chart(style_fig(fig, title="Pedestrian-Involved Crash Circumstances", height=380),
+                     use_container_width=True)
+    insight(
+        "\"Unusual Circumstances\" dominates (51%) but is a catch-all, not very actionable on "
+        "its own. The two \"crossing roadway\" categories combined are only 23.1% of this "
+        "population -- smaller than you might expect given how much infrastructure discussion "
+        "centers on crossings specifically. Scope caveat: this source table has no `MODE` "
+        "column and n=551 is smaller than any single mode's full pedestrian-involved count, so "
+        "it's likely a filtered subset rather than the complete population behind the 50.2% "
+        "e-scooter pedestrian-involved rate -- worth confirming the exact filter before citing "
+        "precise shares from this table."
+    )
+
+    # ================================================================
+    # 13. Driver behavior at the full-population level
+    # ================================================================
+    st.markdown("### 13. Driver Behavior Flags, Full Population (Not Just Fatal Crashes)")
+    st.caption(
+        "Same flags as Section 6, but across all crashes by mode (Bicycle N=101,377 / "
+        "E-Bike N=6,353 / E-Scooter N=5,274) -- confirms the fatal-tier alcohol/distraction "
+        "findings weren't a small-N fluke."
+    )
+    fullbehav_df = pd.DataFrame({
+        "MODE": MODES * 2,
+        "Flag": ["Alcohol-related driver"] * 3 + ["Distracted driver"] * 3,
+        "Pct": [0.61, 0.22, 0.36, 8.37, 6.94, 7.18],
+    })
+    fig = px.bar(
+        fullbehav_df, x="Flag", y="Pct", color="MODE", barmode="group",
+        color_discrete_map=MODE_COLORS, category_orders={"MODE": MODES},
+    )
+    fig.update_layout(yaxis_title="% of all crashes (that mode)", xaxis_title=None)
+    st.plotly_chart(style_fig(fig, title="Driver Behavior Flags, All Severities, by Mode", height=340),
+                     use_container_width=True)
+    insight(
+        "E-bike drivers show the lowest alcohol involvement (0.22% vs. 0.61% bicycle) and the "
+        "lowest distraction flag rate (6.94% vs. 8.37% bicycle) at full population, matching the "
+        "direction of the small-N fatal-crash findings in Section 6. `driver_distraction_by_mode.csv` "
+        "corroborates this: 'Not Distracted' is recorded for 83.2% of e-bike-crash drivers vs. "
+        "79.8-79.9% for bicycle/e-scooter. Combined with e-bike's low fatal-crash citation rate "
+        "(Section 6), a consistent picture emerges: e-bike crashes more often involve an "
+        "attentive, sober driver who still failed to see or yield to the rider -- pointing more "
+        "toward a visibility/conspicuity and infrastructure-geometry problem (see the bike-lane "
+        "'right-hook' pattern in Section 3/10) than a driver-impairment problem, for this mode "
+        "specifically."
+    )
+
+    # ================================================================
     # Data-quality / caveats
     # ================================================================
     st.markdown("---")
@@ -2664,6 +2751,8 @@ with tab9:
 - **`MICROMOBILITY_SPEED_MPH`** is populated for only 0.7% of all crashes (775 of 113,004) -- both speed charts above are directional, not precise population estimates.
 - **The YEAR effect is an adoption-curve confound**, not a behavioral difference -- e-bike/e-scooter crash counts are near-zero pre-2021 and 30-35%+ of their mode's total by 2025. A true rate comparison would need an exposure denominator (riders, trips, or registered devices) this dataset doesn't have.
 - **Section 10 (Crash Causation Highlights) is live**, unlike the rest of this tab -- it recomputes from `cause_analysis_export.csv` filtered to the sidebar's current Mode/Year/Severity/etc. selection, so its numbers will move as you change filters while every other section on this tab stays fixed.
+- **One raw speed-extraction record shows 1,520 mph** for an e-bike crash (clearly a misparsed figure) -- already excluded from the Section 4 summary stats above (n=582 not 583), so nothing here needed correcting, but don't pull directly from the raw extraction table without filtering it out first.
+- **Minimum rider age of 1-2 years old** appears for all three modes in the raw age data -- likely a child passenger (e.g. on a cargo e-bike) or a data-entry error; doesn't affect the median/mean figures used above but worth a spot-check before citing age minimums specifically.
 """
     )
 
