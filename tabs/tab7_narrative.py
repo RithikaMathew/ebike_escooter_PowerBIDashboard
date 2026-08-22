@@ -476,6 +476,7 @@ if hotspot_raw is not None and "MODE" in hotspot_raw.columns:
     hs = hotspot_raw[hotspot_raw["MODE"].isin(sel_modes)].copy()
 
     has_periods = {"N_EARLY_PERIOD", "N_LATE_PERIOD"}.issubset(hs.columns)
+    stats_test_available = False
     if has_periods:
         with st.expander("Why there's a statistical test here now, not just the 1.5x heuristic", expanded=False):
             st.markdown(
@@ -490,30 +491,40 @@ if hotspot_raw is not None and "MODE" in hotspot_raw.columns:
                 statistically significant if both counts are small -- that's the point.
                 """
             )
-        from scipy import stats as _stats
+        try:
+            from scipy import stats as _stats
 
-        def _rate_ratio_test(n1, n2):
-            n_total = n1 + n2
-            if n_total == 0 or pd.isna(n1) or pd.isna(n2):
-                return np.nan, np.nan
-            pval = _stats.binomtest(int(n2), int(n_total), 0.5, alternative="two-sided").pvalue
-            rr = (n2 / n1) if n1 > 0 else np.inf
-            return rr, pval
+            def _rate_ratio_test(n1, n2):
+                n_total = n1 + n2
+                if n_total == 0 or pd.isna(n1) or pd.isna(n2):
+                    return np.nan, np.nan
+                pval = _stats.binomtest(int(n2), int(n_total), 0.5, alternative="two-sided").pvalue
+                rr = (n2 / n1) if n1 > 0 else np.inf
+                return rr, pval
 
-        _rr = hs.apply(lambda r: _rate_ratio_test(r["N_EARLY_PERIOD"], r["N_LATE_PERIOD"]), axis=1)
-        hs["RATE_RATIO"] = [x[0] for x in _rr]
-        hs["GROWTH_PVAL"] = [x[1] for x in _rr]
-        hs["SIG_GROWTH"] = hs["GROWTH_PVAL"] < 0.05
+            _rr = hs.apply(lambda r: _rate_ratio_test(r["N_EARLY_PERIOD"], r["N_LATE_PERIOD"]), axis=1)
+            hs["RATE_RATIO"] = [x[0] for x in _rr]
+            hs["GROWTH_PVAL"] = [x[1] for x in _rr]
+            hs["SIG_GROWTH"] = hs["GROWTH_PVAL"] < 0.05
+            stats_test_available = True
+        except ImportError:
+            st.warning(
+                "`scipy` isn't installed, so the Poisson rate-ratio test can't run. "
+                "Install it (`pip install scipy`) and re-run the dashboard."
+            )
 
-        filter_options = ["All clusters", "Emerging (heuristic: >1.5x growth)",
-                           "Statistically significant growth (Poisson rate-ratio test, p<0.05)"]
+        filter_options = ["All clusters", "Emerging (heuristic: >1.5x growth)"]
+        if stats_test_available:
+            filter_options.append(
+                "Statistically significant growth (Poisson rate-ratio test, p<0.05)"
+            )
     else:
         filter_options = ["All clusters", "Emerging (heuristic: >1.5x growth)"]
 
     cluster_filter = st.selectbox("Filter clusters", filter_options, index=0, key="hotspot_cluster_filter")
     if cluster_filter == "Emerging (heuristic: >1.5x growth)" and "EMERGING" in hs.columns:
         hs = hs[hs["EMERGING"] == True]  # noqa: E712
-    elif cluster_filter.startswith("Statistically significant") and has_periods:
+    elif cluster_filter.startswith("Statistically significant") and stats_test_available:
         hs = hs[hs["SIG_GROWTH"] == True]  # noqa: E712
 
     st.caption(
@@ -523,7 +534,7 @@ if hotspot_raw is not None and "MODE" in hotspot_raw.columns:
     )
     if len(hs) and {"CENTER_LAT", "CENTER_LON"}.issubset(hs.columns):
         hover_cols = ["CLUSTER_ID", "N_CRASHES", "N_EARLY_PERIOD", "N_LATE_PERIOD", "GROWTH_RATIO"]
-        if has_periods:
+        if stats_test_available:
             hover_cols += ["RATE_RATIO", "GROWTH_PVAL"]
         fig = px.scatter_mapbox(
             hs, lat="CENTER_LAT", lon="CENTER_LON", color="MODE",
@@ -536,10 +547,10 @@ if hotspot_raw is not None and "MODE" in hotspot_raw.columns:
         fig.update_layout(mapbox_style="open-street-map", margin=dict(l=0, r=0, t=56, b=0))
         st.plotly_chart(fig, use_container_width=True)
 
-        sort_col = "GROWTH_PVAL" if has_periods else ("GROWTH_RATIO" if "GROWTH_RATIO" in hs.columns else hs.columns[0])
+        sort_col = "GROWTH_PVAL" if stats_test_available else ("GROWTH_RATIO" if "GROWTH_RATIO" in hs.columns else hs.columns[0])
         ascending = sort_col == "GROWTH_PVAL"
         display_hs = hs.sort_values(sort_col, ascending=ascending).copy()
-        if has_periods:
+        if stats_test_available:
             display_hs = display_hs.rename(columns={"RATE_RATIO": "Rate ratio (late/early)", "GROWTH_PVAL": "p-value"})
             display_hs = display_hs.round({"Rate ratio (late/early)": 2, "p-value": 4})
         st.dataframe(display_hs, use_container_width=True, hide_index=True)
@@ -550,7 +561,7 @@ if hotspot_raw is not None and "MODE" in hotspot_raw.columns:
         "not a validated hotspot-detection pipeline. 'Emerging' (heuristic) = late-period "
         "count > 1.5x early-period count, with at least 5 late-period crashes. "
         + ("'Statistically significant growth' = Poisson rate-ratio test p<0.05, assuming "
-           "equal-length early/late periods." if has_periods else "")
+           "equal-length early/late periods." if stats_test_available else "")
     )
 else:
     st.markdown(
