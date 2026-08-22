@@ -536,7 +536,7 @@ if hotspot_raw is not None and "MODE" in hotspot_raw.columns:
         hover_cols = ["CLUSTER_ID", "N_CRASHES", "N_EARLY_PERIOD", "N_LATE_PERIOD", "GROWTH_RATIO"]
         if stats_test_available:
             hover_cols += ["RATE_RATIO", "GROWTH_PVAL"]
-        fig = px.scatter_mapbox(
+        fig = px.scatter_map(
             hs, lat="CENTER_LAT", lon="CENTER_LON", color="MODE",
             size="N_CRASHES", size_max=28,
             color_discrete_map=MODE_COLORS, category_orders={"MODE": MODES},
@@ -544,7 +544,7 @@ if hotspot_raw is not None and "MODE" in hotspot_raw.columns:
             zoom=5.4, height=560,
         )
         fig = style_fig(fig, height=560, title="Cluster Centers (bubble size = crashes in cluster)")
-        fig.update_layout(mapbox_style="open-street-map", margin=dict(l=0, r=0, t=56, b=0))
+        fig.update_layout(map_style="open-street-map", margin=dict(l=0, r=0, t=56, b=0))
         st.plotly_chart(fig, width="stretch")
 
         sort_col = "GROWTH_PVAL" if stats_test_available else ("GROWTH_RATIO" if "GROWTH_RATIO" in hs.columns else hs.columns[0])

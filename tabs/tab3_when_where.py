@@ -109,7 +109,7 @@ if LAT_COL and LON_COL:
         geo[LAT_COL].between(24, 31) & geo[LON_COL].between(-88, -79)
     ]
     if len(geo):
-        fig = px.scatter_mapbox(
+        fig = px.scatter_map(
             geo, lat=LAT_COL, lon=LON_COL, color="MODE",
             color_discrete_map=MODE_COLORS, category_orders={"MODE": MODES},
             opacity=0.55, zoom=5.4, height=560,
@@ -118,7 +118,7 @@ if LAT_COL and LON_COL:
             fig, height=560,
             title=f"Crash Locations by Mode ({len(geo):,} of {total:,} filtered crashes geocoded)",
         )
-        fig.update_layout(mapbox_style="open-street-map", margin=dict(l=0, r=0, t=56, b=0))
+        fig.update_layout(map_style="open-street-map", margin=dict(l=0, r=0, t=56, b=0))
         fig.update_traces(marker=dict(size=6))
         st.plotly_chart(fig, width="stretch")
     else:
@@ -311,7 +311,7 @@ else:
                     trace_kwargs["hovertemplate"] = (
                         f"Percentile: %{{z:.0f}}<br>{hover_label}: %{{customdata:.1f}}<extra></extra>"
                     )
-                fig = go.Figure(go.Choroplethmapbox(**trace_kwargs))
+                fig = go.Figure(go.Choroplethmap(**trace_kwargs))
                 if hotspot_df is not None and len(hotspot_df) and {"CENTER_LAT", "CENTER_LON"}.issubset(hotspot_df.columns):
                     hd = hotspot_df.copy()
                     hd["N_CRASHES"] = pd.to_numeric(hd.get("N_CRASHES"), errors="coerce").fillna(0)
@@ -321,7 +321,7 @@ else:
                         sizes = (hd["N_CRASHES"] / max_n * 22 + 6)
                     else:
                         sizes = 10  # flat fallback size if there's no usable N_CRASHES to scale by
-                    fig.add_trace(go.Scattermapbox(
+                    fig.add_trace(go.Scattermap(
                         lat=hd["CENTER_LAT"], lon=hd["CENTER_LON"],
                         mode="markers",
                         marker=dict(size=sizes, color="#00BCD4", opacity=0.85),
@@ -332,8 +332,8 @@ else:
                         showlegend=True,
                     ))
                 fig.update_layout(
-                    mapbox_style="open-street-map", mapbox_zoom=5.4,
-                    mapbox_center={"lat": 27.8, "lon": -81.7},
+                    map_style="open-street-map", map_zoom=5.4,
+                    map_center={"lat": 27.8, "lon": -81.7},
                     legend=dict(orientation="h", yanchor="bottom", y=1.0, x=0),
                 )
                 fig = style_fig(fig, height=520, title=title, n=subtitle_n)
@@ -558,7 +558,7 @@ else:
                     stepped_colorscale.append([i / n_buckets, bucket_colors[b]])
                     stepped_colorscale.append([(i + 1) / n_buckets, bucket_colors[b]])
 
-                fig = go.Figure(go.Choroplethmapbox(
+                fig = go.Figure(go.Choroplethmap(
                     geojson=tract_geo.geometry.__geo_interface__,
                     locations=tract_geo.index, z=tract_geo["GI_BUCKET_CODE"],
                     customdata=tract_geo["GI_BUCKET"],
@@ -567,8 +567,8 @@ else:
                     hovertemplate="%{customdata}<extra></extra>", showscale=False,
                 ))
                 fig.update_layout(
-                    mapbox_style="open-street-map", mapbox_zoom=5.4,
-                    mapbox_center={"lat": 27.8, "lon": -81.7},
+                    map_style="open-street-map", map_zoom=5.4,
+                    map_center={"lat": 27.8, "lon": -81.7},
                 )
                 fig = style_fig(
                     fig, height=560, n=n_matched,

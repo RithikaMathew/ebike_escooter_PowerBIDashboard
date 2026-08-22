@@ -400,7 +400,9 @@ def _mtime_key(path_or_buffer):
 
 @st.cache_data
 def load_data(path_or_buffer, _mtime=None):
-    df = pd.read_csv(path_or_buffer)
+    # low_memory=False avoids DtypeWarning on mixed-type columns
+    # (e.g. FARS_LANDUSE, CRASH_GROUP) when pandas chunk-infers dtypes.
+    df = pd.read_csv(path_or_buffer, low_memory=False)
     df["MODE"] = pd.Categorical(df["MODE"], categories=MODES, ordered=True)
     if "S4_CRASH_SEVERITY" in df.columns:
         df["S4_CRASH_SEVERITY"] = pd.Categorical(

@@ -492,10 +492,11 @@ else:
 st.markdown("### 8. Narrative Text Themes")
 if narrative_raw is not None and "NARRATIVE_TEXT" in narrative_raw.columns and MAIN_CRASH_ID_COL and "REPORT_NUMBER" in narrative_raw.columns:
     KW_THEMES = {
-        "speed_related": r"\bspeed(ing)?\b|excessive speed|too fast",
+        # Non-capturing groups — str.contains warns on (...) match groups.
+        "speed_related": r"\bspeed(?:ing)?\b|excessive speed|too fast",
         "sidewalk": r"\bsidewalk\b",
         "helmet": r"\bhelmet\b",
-        "failed_to_yield": r"fail(ed)? to yield|did not yield",
+        "failed_to_yield": r"fail(?:ed)? to yield|did not yield",
         "crosswalk": r"\bcrosswalk\b",
         "hit_and_run": r"hit.and.run|left the scene|fled the scene",
     }
