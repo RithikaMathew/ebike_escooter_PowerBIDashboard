@@ -20,7 +20,7 @@ else:
                 color_discrete_map=MODE_COLORS, category_orders={demo_mode_col: MODES},
             )
             fig.update_layout(yaxis_title="Age", xaxis_title=None, showlegend=False)
-            st.plotly_chart(style_fig(fig, title="Age Distribution by Mode (Violin Plot)", height=420), use_container_width=True)
+            st.plotly_chart(style_fig(fig, title="Age Distribution by Mode (Violin Plot)", height=420), width="stretch")
 
     c1, c2 = st.columns(2)
     with c1:
@@ -36,7 +36,7 @@ else:
                 age_band_df = demo.groupby("_AGE_BAND", observed=True).size().reset_index(name="count")
                 fig = px.bar(age_band_df, x="_AGE_BAND", y="count", category_orders={"_AGE_BAND": AGE_BAND_ORDER})
             fig.update_layout(xaxis_title=None, yaxis_title="People involved")
-            st.plotly_chart(style_fig(fig, title="Age Distribution by Band"), use_container_width=True)
+            st.plotly_chart(style_fig(fig, title="Age Distribution by Band"), width="stretch")
         else:
             st.info("No recognizable age column found in the demographics file.")
 
@@ -48,7 +48,7 @@ else:
                 marker=dict(colors=[GENDER_COLORS.get(g, "#B0BEC5") for g in gender_counts.index]),
                 textinfo="label+percent",
             ))
-            st.plotly_chart(style_fig(fig, title="Gender Breakdown"), use_container_width=True)
+            st.plotly_chart(style_fig(fig, title="Gender Breakdown"), width="stretch")
         else:
             st.info("No recognizable gender column found in the demographics file.")
 
@@ -75,7 +75,7 @@ else:
                     fig.update_layout(yaxis_title="Age", xaxis_title=None, showlegend=False)
                     st.plotly_chart(
                         style_fig(fig, title=f"{mode} (n={len(sub):,})", height=340),
-                        use_container_width=True,
+                        width="stretch",
                     )
 
         if sev_col and DEMO_GENDER_AVAILABLE:
@@ -86,7 +86,7 @@ else:
                 color_discrete_map=GENDER_COLORS, category_orders={demo_mode_col: MODES},
             )
             fig.update_layout(yaxis_title="% of people", xaxis_title=None, barmode="stack")
-            st.plotly_chart(style_fig(fig, title="Gender Mix by Mode"), use_container_width=True)
+            st.plotly_chart(style_fig(fig, title="Gender Mix by Mode"), width="stretch")
 
     st.caption(
         f"Demographics reflect **{len(demo):,}** person-level records "

@@ -153,7 +153,7 @@ fig.update_traces(
 fig.update_layout(showlegend=False, xaxis_title=None)
 st.plotly_chart(
     style_fig(fig, title="Fatalities per 1,000 Crashes, by Mode (live)", n=mode_n_s1),
-    use_container_width=True,
+    width="stretch",
 )
 bike_rate = fatal_per_1k.get("Bicycle", np.nan)
 ebike_ratio = fatal_per_1k.get("E-Bike", np.nan) / bike_rate if bike_rate else np.nan
@@ -201,7 +201,7 @@ if CRASH_TYPE_COL:
     )
     fig.update_traces(hovertemplate="%{fullData.name}, %{x}: %{y:.1f}%% (n=%{customdata[0]:,})<extra></extra>")
     fig.update_layout(yaxis_title="% of that mode's crashes", xaxis_title=None)
-    st.plotly_chart(style_fig(fig, title="Crash Type by Mode (keyword match, live)", n=mode_n_ct), use_container_width=True)
+    st.plotly_chart(style_fig(fig, title="Crash Type by Mode (keyword match, live)", n=mode_n_ct), width="stretch")
     st.caption(
         f"Live keyword match on `{CRASH_TYPE_COL}` (contains \"pedestrian\" / \"single\" / "
         f"\"bicycle\"/\"bike\") -- an approximation of the underlying categorical field, not a "
@@ -240,7 +240,7 @@ if len(growth_df) and growth_df["YEAR"].nunique() >= 2:
     fig.update_layout(yaxis_title="Crashes per year (log scale)", xaxis_title=None)
     st.plotly_chart(
         style_fig(fig, title="Crashes by Year, by Mode (live)", n=int(growth_df["Crashes"].sum())),
-        use_container_width=True,
+        width="stretch",
     )
     yrs = sorted(growth_df["YEAR"].unique())
     y0, y1 = yrs[0], yrs[-1]
@@ -288,7 +288,7 @@ if MICRO_SPEED_COL:
         fig.update_layout(showlegend=False, xaxis_title=None, yaxis_title="Median self-reported speed (mph)")
         st.plotly_chart(
             style_fig(fig, title="Median Crash Speed by Mode (live)", height=340, n=speed_n),
-            use_container_width=True,
+            width="stretch",
         )
         st.caption(
             f"Self-reported/extracted speed is only populated for a small share of narratives "
@@ -333,7 +333,7 @@ if demo is not None and not demo.empty:
                     hovertemplate="%{x}: median age %{y:.0f} (n=%{customdata[0]:,})<extra></extra>",
                 ))
                 fig.update_layout(showlegend=False, xaxis_title=None)
-                st.plotly_chart(style_fig(fig, title="Median Rider Age (live)", height=340, n=age_n), use_container_width=True)
+                st.plotly_chart(style_fig(fig, title="Median Rider Age (live)", height=340, n=age_n), width="stretch")
             else:
                 st.info("No age column in the loaded demographics file.")
         with ag2:
@@ -350,7 +350,7 @@ if demo is not None and not demo.empty:
                 fig.update_layout(showlegend=False, xaxis_title=None)
                 st.plotly_chart(
                     style_fig(fig, title="Female Rider Share (live)", height=340, n=int(gtot.sum())),
-                    use_container_width=True,
+                    width="stretch",
                 )
             else:
                 st.info("No gender column in the loaded demographics file.")
@@ -401,7 +401,7 @@ fig.update_traces(hovertemplate="%{fullData.name}, %{x}: %{y:.1f}%% (n=%{customd
 fig.update_layout(yaxis_title="Driver citation rate (%)", xaxis_title=None)
 st.plotly_chart(
     style_fig(fig, title="Citation Rate by Severity Tier, by Mode (live)", n=int(len(df))),
-    use_container_width=True,
+    width="stretch",
 )
 
 behav_rows = []
@@ -425,7 +425,7 @@ if behav_rows:
     st.plotly_chart(
         style_fig(fig, title="Driver Impairment Flags in Fatal Crashes, by Mode (live)", height=340,
                   n=int(fatal_mask.sum())),
-        use_container_width=True,
+        width="stretch",
     )
 fatal_cite = cite_tier_df[cite_tier_df["Tier"] == "Fatal only"].set_index("MODE")["Pct"]
 fatal_n_tier = cite_tier_df[cite_tier_df["Tier"] == "Fatal only"].set_index("MODE")["n"]
@@ -458,7 +458,7 @@ if hotspot_raw is not None and "MODE" in hotspot_raw.columns:
         st.plotly_chart(
             style_fig(fig, title="Number of Spatiotemporal Crash Clusters, by Mode (live)", height=360,
                       n=int(cluster_counts.sum())),
-            use_container_width=True,
+            width="stretch",
         )
     with geo2:
         st.markdown("**Largest clusters in current selection**")
@@ -466,7 +466,7 @@ if hotspot_raw is not None and "MODE" in hotspot_raw.columns:
             cols_show = [c for c in ["MODE", "N_CRASHES", "CENTER_LAT", "CENTER_LON"] if c in hs7.columns]
             st.dataframe(
                 hs7.sort_values("N_CRASHES", ascending=False)[cols_show].head(6),
-                hide_index=True, use_container_width=True,
+                hide_index=True, width="stretch",
             )
         else:
             st.info("No cluster rows for the current mode selection.")
@@ -522,7 +522,7 @@ if narrative_raw is not None and "NARRATIVE_TEXT" in narrative_raw.columns and M
         ))
         st.plotly_chart(
             style_fig(fig, title="Keyword Mention Rate (% of narratives), by Mode (live)", height=360, n=kw_n),
-            use_container_width=True,
+            width="stretch",
         )
         st.caption(
             "This is regex keyword matching on free text, not NLP classification -- a lead "
@@ -562,7 +562,7 @@ with ri2:
         ic9_n = ic9.groupby("MODE", observed=True).size().reindex(MODES).fillna(0).astype(int).to_dict()
         st.plotly_chart(
             style_fig(fig, title="Intersection Control Type (live)", height=340, n=ic9_n),
-            use_container_width=True,
+            width="stretch",
         )
     else:
         st.info("No `INTERSECTION_CONTROL` data in the current filter.")
@@ -581,7 +581,7 @@ with ri3:
         fig.update_layout(showlegend=False, xaxis_title=None, yaxis_title="% crashes in dark conditions")
         st.plotly_chart(
             style_fig(fig, title="Dark-Condition Crashes, by Mode (live)", height=340, n=lc9_n.to_dict()),
-            use_container_width=True,
+            width="stretch",
         )
     else:
         st.info("No `LIGHT_CONDITION` data in the current filter.")
@@ -623,7 +623,7 @@ if cause_raw is not None and "primary_cause" in cause_raw.columns:
                 textinfo="label+percent",
             ))
             st.plotly_chart(style_fig(fig, title="Fault Attribution (Current Selection)", height=340),
-                             use_container_width=True)
+                             width="stretch")
         with ch2:
             sc2 = chdf.groupby(["MODE", "speed_contributing"], observed=True).size().reset_index(name="count")
             sc2["pct"] = sc2.groupby("MODE")["count"].transform(lambda s: s / s.sum() * 100)
@@ -634,7 +634,7 @@ if cause_raw is not None and "primary_cause" in cause_raw.columns:
             fig.update_traces(texttemplate="%{text:.1f}%", textposition="outside")
             fig.update_layout(showlegend=False, yaxis_title="% flagged speed-contributing", xaxis_title=None)
             st.plotly_chart(style_fig(fig, title="Speed Flagged as Contributing (Driver or Rider), by Mode", height=340),
-                             use_container_width=True)
+                             width="stretch")
             st.caption(
                 "Either party's speed, not rider-only -- see the caveat on the Crash "
                 "Causation tab. For rider-speed-specific numbers, see Section 4 above."
@@ -688,13 +688,13 @@ if len(yr_sev) >= 2:
                       custom_data=["n"])
         fig.update_traces(hovertemplate="%{x}: %{y:.2f}%% (n=%{customdata[0]:,})<extra></extra>")
         fig.update_layout(yaxis_title="Fatality %", xaxis_title=None)
-        st.plotly_chart(style_fig(fig, title="Fatality Share by Year (live)", height=320), use_container_width=True)
+        st.plotly_chart(style_fig(fig, title="Fatality Share by Year (live)", height=320), width="stretch")
     with st2:
         fig = px.line(yr_sev, x="YEAR", y="serious_pct", markers=True, color_discrete_sequence=["#FF9800"],
                       custom_data=["n"])
         fig.update_traces(hovertemplate="%{x}: %{y:.2f}%% (n=%{customdata[0]:,})<extra></extra>")
         fig.update_layout(yaxis_title="Serious Injury %", xaxis_title=None)
-        st.plotly_chart(style_fig(fig, title="Serious-Injury Share by Year (live)", height=320), use_container_width=True)
+        st.plotly_chart(style_fig(fig, title="Serious-Injury Share by Year (live)", height=320), width="stretch")
     peak_fatal_yr = yr_sev.loc[yr_sev["fatal_pct"].idxmax(), "YEAR"]
     insight(
         f"Fatality share peaks in {peak_fatal_yr:.0f} in the current selection. Total crash "
@@ -723,7 +723,7 @@ fig = px.bar(ped_df.sort_values("Count"), x="Count", y="Circumstance", orientati
              color_discrete_sequence=["#5C6BC0"])
 fig.update_layout(yaxis_title=None, xaxis_title="Crashes (n=551)")
 st.plotly_chart(style_fig(fig, title="Pedestrian-Involved Crash Circumstances", height=380),
-                 use_container_width=True)
+                 width="stretch")
 insight(
     "\"Unusual Circumstances\" dominates (51%) but is a catch-all, not very actionable on "
     "its own. The two \"crossing roadway\" categories combined are only 23.1% of this "
@@ -755,7 +755,7 @@ fig = px.bar(
 )
 fig.update_layout(yaxis_title="% of all crashes (that mode)", xaxis_title=None)
 st.plotly_chart(style_fig(fig, title="Driver Behavior Flags, All Severities, by Mode", height=340),
-                 use_container_width=True)
+                 width="stretch")
 insight(
     "E-bike drivers show the lowest alcohol involvement (0.22% vs. 0.61% bicycle) and the "
     "lowest distraction flag rate (6.94% vs. 8.37% bicycle) at full population, matching the "

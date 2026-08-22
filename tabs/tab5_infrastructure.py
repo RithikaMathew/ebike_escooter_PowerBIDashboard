@@ -23,7 +23,7 @@ with c1:
             color_discrete_map=MODE_COLORS, category_orders={"MODE": MODES},
         )
         fig.update_layout(yaxis_title="Average Annual Daily Traffic", xaxis_title=None, showlegend=False)
-        st.plotly_chart(style_fig(fig, title="Traffic Volume (AADT) by Mode"), use_container_width=True)
+        st.plotly_chart(style_fig(fig, title="Traffic Volume (AADT) by Mode"), width="stretch")
     else:
         st.info("No AADT data in the current filter selection.")
 
@@ -38,7 +38,7 @@ with c2:
         )
         fig.update_layout(yaxis_title=None, xaxis_title="% of that mode's crashes (with intersection-control data)",
                            yaxis={"categoryorder": "total ascending"})
-        st.plotly_chart(style_fig(fig, title="Intersection Control Type by Mode (% Within Mode)"), use_container_width=True)
+        st.plotly_chart(style_fig(fig, title="Intersection Control Type by Mode (% Within Mode)"), width="stretch")
     else:
         st.info("No intersection-control data in the current filter selection.")
 
@@ -51,7 +51,7 @@ if SPEED_COL:
             color_discrete_map=MODE_COLORS, category_orders={"MODE": MODES},
         )
         fig.update_layout(yaxis_title="Posted Speed Limit (mph)", xaxis_title=None, showlegend=False)
-        st.plotly_chart(style_fig(fig, title="Posted Speed Limit Distribution by Mode"), use_container_width=True)
+        st.plotly_chart(style_fig(fig, title="Posted Speed Limit Distribution by Mode"), width="stretch")
     else:
         st.info("No Posted Speed Limit data in the current filter selection.")
 
@@ -66,7 +66,7 @@ if MICRO_SPEED_COL:
         fig.update_layout(yaxis_title="Self-Reported Speed (mph)", xaxis_title=None, showlegend=False)
         st.plotly_chart(
             style_fig(fig, title=f"Micromobility Speed From Crash Narratives by Mode (n={len(mspd_df):,})"),
-            use_container_width=True,
+            width="stretch",
         )
         st.caption(
             "Extracted from the `micromobility_speed` narrative field. Crashes where the "
@@ -134,7 +134,7 @@ else:
                     fig, title="Speed Flagged as Contributing, by Infrastructure Type (live)",
                     height=360, n=int(sc9["n"].sum()),
                 ),
-                use_container_width=True,
+                width="stretch",
             )
             st.caption(
                 "Either party's speed (driver or rider), from the LLM causation classifier -- "
@@ -184,7 +184,7 @@ else:
                         fig, title="Self-Reported Crash Speed (mph), by Infrastructure Type (live)",
                         height=100 + 60 * len(order), n=infra_speed_n,
                     ),
-                    use_container_width=True,
+                    width="stretch",
                 )
                 st.caption(
                     f"Categories with fewer than 5 matched crashes are dropped from this chart. "
@@ -231,7 +231,7 @@ if infra_cols_present:
                     )
                     fig.update_layout(yaxis_title=None, xaxis_title="Crashes",
                                        yaxis={"categoryorder": "total ascending"})
-                st.plotly_chart(style_fig(fig, title=f"{col_label} by Mode"), use_container_width=True)
+                st.plotly_chart(style_fig(fig, title=f"{col_label} by Mode"), width="stretch")
 
 road_type_df = df[df[ROAD_TYPE_COL].notna()] if ROAD_TYPE_COL else pd.DataFrame()
 if len(road_type_df):
@@ -248,7 +248,7 @@ if len(road_type_df):
     )
     fig.update_layout(yaxis_title="Trafficway Code", xaxis_title="% of that mode's crashes",
                        yaxis={"categoryorder": "total ascending"})
-    st.plotly_chart(style_fig(fig, title="Road Type (Trafficway Code) by Mode (% Within Mode)"), use_container_width=True)
+    st.plotly_chart(style_fig(fig, title="Road Type (Trafficway Code) by Mode (% Within Mode)"), width="stretch")
 
 
 render_pipeline_figures("tab5")

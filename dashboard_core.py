@@ -670,7 +670,7 @@ def render_pipeline_figures(tab_key):
             row_cols = st.columns(3)
             for p, slot in zip(imgs[i:i + 3], row_cols):
                 with slot:
-                    st.image(p, caption=_label_from_filename(os.path.basename(p)), use_container_width=True)
+                    st.image(p, caption=_label_from_filename(os.path.basename(p)), width="stretch")
 
 # ============================================================================
 # HEADER
@@ -723,13 +723,13 @@ with st.sidebar:
     ksi_labels = [s for s in ["Fatality", "Serious Injury"] if s in sev_options]
     fatal_labels = [s for s in ["Fatality"] if s in sev_options]
     preset_cols = st.columns(3)
-    if preset_cols[0].button("All", use_container_width=True, key=f"sev_preset_all_{RS}"):
+    if preset_cols[0].button("All", width="stretch", key=f"sev_preset_all_{RS}"):
         st.session_state[f"filter_severity_{RS}"] = sev_options
         st.rerun()
-    if preset_cols[1].button("KSI", use_container_width=True, key=f"sev_preset_ksi_{RS}"):
+    if preset_cols[1].button("KSI", width="stretch", key=f"sev_preset_ksi_{RS}"):
         st.session_state[f"filter_severity_{RS}"] = ksi_labels
         st.rerun()
-    if preset_cols[2].button("Fatal", use_container_width=True, key=f"sev_preset_fatal_{RS}"):
+    if preset_cols[2].button("Fatal", width="stretch", key=f"sev_preset_fatal_{RS}"):
         st.session_state[f"filter_severity_{RS}"] = fatal_labels
         st.rerun()
     sel_severity = st.multiselect("Injury Severity", sev_options, default=sev_options, key=f"filter_severity_{RS}")
@@ -780,7 +780,7 @@ with st.sidebar:
         )
 
     st.markdown("---")
-    reset_clicked = st.button("\U0001F504 Reset All Filters", use_container_width=True, type="primary")
+    reset_clicked = st.button("\U0001F504 Reset All Filters", width="stretch", type="primary")
     st.caption(f"Loaded **{len(df_raw):,}** total crash records.")
 
 if reset_clicked:
@@ -848,7 +848,7 @@ with st.sidebar:
         df.to_csv(index=False).encode("utf-8"),
         file_name="filtered_crashes.csv",
         mime="text/csv",
-        use_container_width=True,
+        width="stretch",
     )
 
 # ============================================================================

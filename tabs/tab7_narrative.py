@@ -14,7 +14,7 @@ if "CRASH_GROUP" in df.columns and df["CRASH_GROUP"].notna().any():
     )
     st.plotly_chart(
         style_fig(fig, title=f"Crash Scenario / Type (top {top_n}, by mode)", height=480),
-        use_container_width=True,
+        width="stretch",
     )
     st.caption(
         "Source: `bicycle_typing_20.csv` (`S4_CRASH_GROUP_DESCRIPTION`) -- describes "
@@ -42,7 +42,7 @@ if "CRASH_TYPE_DESC" in df.columns and df["CRASH_TYPE_DESC"].notna().any():
     )
     st.plotly_chart(
         style_fig(fig, title=f"Crash Type Description (top {desc_top_n}, by mode)", height=480),
-        use_container_width=True,
+        width="stretch",
     )
     st.caption(
         "Source: `bicycle_typing_20.csv` (`S4_CRASH_TYPE_DESCRIPTION`) -- the specific "
@@ -74,7 +74,7 @@ if cf_cols_present and df[cf_cols_present].notna().any().any():
     )
     st.plotly_chart(
         style_fig(fig, title=f"Top {cf_top_n} Contributing Factors -- All Active Modes", height=480),
-        use_container_width=True,
+        width="stretch",
     )
     st.caption(
         "Source: `crash_event.csv` (`ROAD_CIRCUMSTANCES_1` + `ENVIRONMENT_CIRCUMSTANCES_1`) -- "
@@ -178,7 +178,7 @@ else:
                     fig.update_layout(xaxis_title="Odds ratio (log scale, dashed line = no effect)", xaxis_type="log", yaxis_title=None)
                     st.plotly_chart(
                         style_fig(fig, title="Logistic Regression Odds Ratios (95% CI)", height=max(360, 32 * len(or_table))),
-                        use_container_width=True,
+                        width="stretch",
                     )
                 with sc2:
                     from sklearn.ensemble import RandomForestClassifier
@@ -198,7 +198,7 @@ else:
                         fig.update_layout(yaxis_title=None, xaxis_title="Permutation importance (drop in AUC)")
                         st.plotly_chart(
                             style_fig(fig, title=f"Random Forest Cross-Check (test AUC={test_auc:.2f})", height=max(360, 32 * len(imp_df))),
-                            use_container_width=True,
+                            width="stretch",
                         )
                     else:
                         st.info("Test split ended up with only one outcome class -- try a larger dataset or different severe-category split.")
@@ -233,7 +233,7 @@ if "IN_QWEN_NARRATIVES" in df.columns:
                 labels=qcounts.index, values=qcounts.values, hole=0.5,
                 textinfo="label+percent",
             ))
-            st.plotly_chart(style_fig(fig, title="Qwen Raw Classification"), use_container_width=True)
+            st.plotly_chart(style_fig(fig, title="Qwen Raw Classification"), width="stretch")
         with qc2:
             cross = qdf.groupby(["QWEN_CLASS", "MODE"], observed=True).size().reset_index(name="count")
             pivot = cross.pivot(index="QWEN_CLASS", columns="MODE", values="count").fillna(0)
@@ -242,7 +242,7 @@ if "IN_QWEN_NARRATIVES" in df.columns:
                 colorscale="Blues", colorbar=dict(title="Crashes"),
             ))
             st.plotly_chart(
-                style_fig(fig, title="Qwen Raw Class vs. Final Mode"), use_container_width=True
+                style_fig(fig, title="Qwen Raw Class vs. Final Mode"), width="stretch"
             )
             st.caption(
                 "Final Mode can differ from the raw Qwen label -- e.g. a Qwen "
@@ -277,7 +277,7 @@ if "IN_QWEN_NARRATIVES" in df.columns:
                 st.plotly_chart(
                     style_fig(fig, title="Manual Crash Group vs. Qwen Classification",
                               height=max(360, 30 * len(crosstab))),
-                    use_container_width=True,
+                    width="stretch",
                 )
                 qwen_cats = set(val_df["QWEN_CLASS"].str.strip().str.lower())
                 manual_cats = set(val_df["CRASH_GROUP"].str.strip().str.lower())
@@ -369,7 +369,7 @@ if narrative_raw is not None and "NARRATIVE_TEXT" in narrative_raw.columns:
                 ))
                 st.plotly_chart(
                     style_fig(fig, title="Keyword Mentions (% of narratives) by Mode", height=max(320, 34 * len(keywords))),
-                    use_container_width=True,
+                    width="stretch",
                 )
 
         st.markdown("#### Topic modeling (unsupervised)")
@@ -453,7 +453,7 @@ if narrative_raw is not None and "NARRATIVE_TEXT" in narrative_raw.columns:
                         fig.update_layout(yaxis_title=None, xaxis_title="Mentions")
                         st.plotly_chart(
                             style_fig(fig, title=f"Top 20 Words -- {wmode} (n={len(sub_txt):,})", height=460),
-                            use_container_width=True,
+                            width="stretch",
                         )
                     else:
                         st.info(f"No words for {wmode}.")
@@ -545,7 +545,7 @@ if hotspot_raw is not None and "MODE" in hotspot_raw.columns:
         )
         fig = style_fig(fig, height=560, title="Cluster Centers (bubble size = crashes in cluster)")
         fig.update_layout(mapbox_style="open-street-map", margin=dict(l=0, r=0, t=56, b=0))
-        st.plotly_chart(fig, use_container_width=True)
+        st.plotly_chart(fig, width="stretch")
 
         sort_col = "GROWTH_PVAL" if stats_test_available else ("GROWTH_RATIO" if "GROWTH_RATIO" in hs.columns else hs.columns[0])
         ascending = sort_col == "GROWTH_PVAL"
@@ -553,7 +553,7 @@ if hotspot_raw is not None and "MODE" in hotspot_raw.columns:
         if stats_test_available:
             display_hs = display_hs.rename(columns={"RATE_RATIO": "Rate ratio (late/early)", "GROWTH_PVAL": "p-value"})
             display_hs = display_hs.round({"Rate ratio (late/early)": 2, "p-value": 4})
-        st.dataframe(display_hs, use_container_width=True, hide_index=True)
+        st.dataframe(display_hs, width="stretch", hide_index=True)
     else:
         st.info("No clusters match the current Mode selection.")
     st.caption(

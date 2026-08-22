@@ -19,7 +19,7 @@ with c1:
     fig.update_layout(yaxis_title="% of crashes", xaxis_title=None, barmode="stack")
     mode_n = df.groupby("MODE", observed=True).size().reindex(MODES).fillna(0).astype(int).to_dict()
     st.plotly_chart(
-        style_fig(fig, title="Injury Severity Mix by Mode", n=mode_n), use_container_width=True
+        style_fig(fig, title="Injury Severity Mix by Mode", n=mode_n), width="stretch"
     )
     st.caption("Hover a segment for its raw crash count.")
 
@@ -47,7 +47,7 @@ with c2:
     )
     fig.update_layout(barmode="group", yaxis_title="%")
     st.plotly_chart(
-        style_fig(fig, title="Fatal & Serious Injury Rate", n=mode_sizes), use_container_width=True
+        style_fig(fig, title="Fatal & Serious Injury Rate", n=mode_sizes), width="stretch"
     )
     st.caption("Hover a bar for its raw numerator count; denominator is that mode's total in the subtitle n=.")
 
@@ -71,7 +71,7 @@ with c3:
     fig.update_layout(yaxis_title="% of that year's crashes")
     st.plotly_chart(
         style_fig(fig, title="Severity Mix Over Time (% of Crashes)", n=total),
-        use_container_width=True,
+        width="stretch",
     )
     st.caption("Hover a band for the raw crash count behind that year/severity slice.")
 
@@ -88,7 +88,7 @@ with c4:
     ))
     fig.update_layout(yaxis_title="% crashes with MV involved", yaxis_range=[0, 110])
     st.plotly_chart(
-        style_fig(fig, title="Motor Vehicle Involvement by Mode", n=mode_sizes4), use_container_width=True
+        style_fig(fig, title="Motor Vehicle Involvement by Mode", n=mode_sizes4), width="stretch"
     )
 
 if "FARS_LANDUSE" in df.columns:

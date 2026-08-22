@@ -136,9 +136,9 @@ if meta_raw is not None:
         fig = go.Figure(go.Funnel(
             y=labels, x=values, marker=dict(color="#2b3f8c"),
         ))
-        st.plotly_chart(style_fig(fig, title="Records Retained at Each Pipeline Step", height=340), use_container_width=True)
+        st.plotly_chart(style_fig(fig, title="Records Retained at Each Pipeline Step", height=340), width="stretch")
     else:
-        st.dataframe(meta_raw, use_container_width=True, hide_index=True)
+        st.dataframe(meta_raw, width="stretch", hide_index=True)
 
     mode_metrics = [s for s in ["bicycle_crashes", "ebike_crashes", "escooter_crashes"] if s in m.index]
     if mode_metrics:

@@ -53,7 +53,7 @@ else:
             text=att["pct"].round(1).astype(str) + "%",
         )
         fig.update_layout(yaxis_title="% of narrative-classified crashes", xaxis_title=None)
-        st.plotly_chart(style_fig(fig, title="Fault Attribution by Mode"), use_container_width=True)
+        st.plotly_chart(style_fig(fig, title="Fault Attribution by Mode"), width="stretch")
         st.caption(
             "Driver-attributable: failed to yield turning, ran stop/red light, following "
             "too close, distracted, speeding/reckless, impaired, dooring. Non-motorist-"
@@ -88,7 +88,7 @@ else:
         )
         st.plotly_chart(
             style_fig(fig, title="Infrastructure Type at Impact, by Mode", height=440),
-            use_container_width=True,
+            width="stretch",
         )
         infra_pct = cdf["INFRA_LABEL"].value_counts(normalize=True) * 100
         off_road = infra_pct.get("Sidewalk", 0) + infra_pct.get("Crosswalk", 0)
@@ -118,7 +118,7 @@ else:
         ))
         st.plotly_chart(
             style_fig(fig, title=f"Primary Cause x Location -- {mode_label} (row %)", height=420),
-            use_container_width=True,
+            width="stretch",
         )
         bike_lane_row = pivot_pct.loc["Bike lane"] if "Bike lane" in pivot_pct.index else None
         if bike_lane_row is not None and len(bike_lane_row):
@@ -147,7 +147,7 @@ else:
                                yaxis={"categoryorder": "total ascending"})
             st.plotly_chart(
                 style_fig(fig, title=f"Top Causes of Sidewalk Crashes ({', '.join(present_modes)})", height=340),
-                use_container_width=True,
+                width="stretch",
             )
             dwc = sw["CAUSE_LABEL"].value_counts(normalize=True).get("Sidewalk driveway conflict", 0) * 100
             dft = sw["CAUSE_LABEL"].value_counts(normalize=True).get("Driver failed to yield turning", 0) * 100
@@ -174,7 +174,7 @@ else:
             color_discrete_map={"yes": "#C0392B", "unclear": "#BDBDBD", "no": "#81C784"},
         )
         fig.update_layout(yaxis_title="% of narrative-classified crashes", xaxis_title=None)
-        st.plotly_chart(style_fig(fig, title="Speed Flagged as Contributing (Driver or Rider), by Mode"), use_container_width=True)
+        st.plotly_chart(style_fig(fig, title="Speed Flagged as Contributing (Driver or Rider), by Mode"), width="stretch")
         st.caption(
             "**Not micromobility-speed-specific.** This flags whether the narrative says "
             "*anyone's* speed -- the rider's or the driver's -- contributed to the crash; it "
@@ -211,7 +211,7 @@ else:
                                    yaxis={"categoryorder": "total ascending"})
                 st.plotly_chart(
                     style_fig(fig, title=f"Hit-and-Run Location (n={len(hr):,})", height=320),
-                    use_container_width=True,
+                    width="stretch",
                 )
             else:
                 st.info("No hit-and-run crashes in the current filter selection.")
@@ -226,7 +226,7 @@ else:
                                    yaxis={"categoryorder": "total ascending"})
                 st.plotly_chart(
                     style_fig(fig, title=f"Wrong-Way Riding Location (n={len(wwr):,})", height=320),
-                    use_container_width=True,
+                    width="stretch",
                 )
             else:
                 st.info("No wrong-way-riding crashes in the current filter selection.")
@@ -256,7 +256,7 @@ else:
             st.markdown(f"- {n}")
         if cross_class is not None:
             with st.expander("Raw prediction counts by source file (mode-label cross-contamination)"):
-                st.dataframe(cross_class.unstack(fill_value=0), use_container_width=True)
+                st.dataframe(cross_class.unstack(fill_value=0), width="stretch")
 
 render_pipeline_figures("tab8")
 

@@ -23,7 +23,7 @@ with c1:
                        hovertemplate="%{y}, %{fullData.name}: %{x:.1f}%% (n=%{customdata[0]:,})<extra></extra>")
     fig.update_layout(xaxis_title="% of crashes for that mode", yaxis_title=None)
     st.plotly_chart(
-        style_fig(fig, title="Driver Behavior Flags by Mode", height=440, n=flag_n), use_container_width=True
+        style_fig(fig, title="Driver Behavior Flags by Mode", height=440, n=flag_n), width="stretch"
     )
 
 with c2:
@@ -39,7 +39,7 @@ with c2:
     ))
     fig.update_layout(yaxis_title="% crashes with citation", yaxis_range=[0, 110])
     st.plotly_chart(
-        style_fig(fig, title="Citation Rate by Mode", n=cite_mode_n), use_container_width=True
+        style_fig(fig, title="Citation Rate by Mode", n=cite_mode_n), width="stretch"
     )
 
     cite_yr = df.groupby(["YEAR", "MODE"], observed=True)["CITED"].mean().reset_index()
@@ -49,7 +49,7 @@ with c2:
         color_discrete_map=MODE_COLORS, category_orders={"MODE": MODES},
     )
     fig2.update_layout(yaxis_title="% cited", xaxis_title=None)
-    st.plotly_chart(style_fig(fig2, title="Citation Rate Over Time, by Mode", height=280), use_container_width=True)
+    st.plotly_chart(style_fig(fig2, title="Citation Rate Over Time, by Mode", height=280), width="stretch")
     st.caption(
         "A declining rate here can reflect changing enforcement/charging practice, more "
         "crashes being self-reported without an officer response, or a reporting-lag "
@@ -78,7 +78,7 @@ if "DISTRACTION_TYPE" in df.columns and df["DISTRACTION_TYPE"].notna().any():
         )
         st.plotly_chart(
             style_fig(fig, title=f"Driver Distraction Type (top {dist_top_n}, by mode, excl. 'Not Distracted')", height=440),
-            use_container_width=True,
+            width="stretch",
         )
         st.caption(
             "Source: `driver.csv` (`DRIVER_DISTRACTION_CODE`) -- the specific distraction "

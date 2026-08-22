@@ -7,7 +7,7 @@ with c1:
         category_orders={"DOW": DOW_ORDER, "MODE": MODES},
     )
     fig.update_layout(xaxis_title=None, yaxis_title="Crashes")
-    st.plotly_chart(style_fig(fig, title="Crashes by Day of Week", n=total), use_container_width=True)
+    st.plotly_chart(style_fig(fig, title="Crashes by Day of Week", n=total), width="stretch")
 
 with c2:
     dn_mode = df.groupby(["MODE", "DAY_NIGHT"], observed=True).size().reset_index(name="count")
@@ -22,7 +22,7 @@ with c2:
     fig.update_layout(yaxis_title="% of crashes", xaxis_title=None, barmode="stack")
     dn_mode_n = dn_mode.groupby("MODE")["count"].sum().reindex(MODES).fillna(0).astype(int).to_dict()
     st.plotly_chart(
-        style_fig(fig, title="Day vs. Night Share by Mode", n=dn_mode_n), use_container_width=True
+        style_fig(fig, title="Day vs. Night Share by Mode", n=dn_mode_n), width="stretch"
     )
 
 c3, c4 = st.columns(2)
@@ -39,7 +39,7 @@ with c3:
     fig.update_layout(yaxis_title="% of crashes", xaxis_title=None, barmode="stack")
     loc_mode_n = loc_mode.groupby("MODE")["count"].sum().reindex(MODES).fillna(0).astype(int).to_dict()
     st.plotly_chart(
-        style_fig(fig, title="Intersection vs. Segment by Mode", n=loc_mode_n), use_container_width=True
+        style_fig(fig, title="Intersection vs. Segment by Mode", n=loc_mode_n), width="stretch"
     )
 
 with c4:
@@ -61,7 +61,7 @@ with c4:
     light_n = {m: int(mode_totals.get(m, 0)) for m in MODES}
     st.plotly_chart(
         style_fig(fig, title="Light Conditions (% Within Mode)", n=light_n, height=420),
-        use_container_width=True,
+        width="stretch",
     )
 
 c5, c6 = st.columns(2)
@@ -80,7 +80,7 @@ with c5:
     wthr_n = {m: int(mode_totals.get(m, 0)) for m in MODES}
     st.plotly_chart(
         style_fig(fig, title="Weather Conditions (% Within Mode)", n=wthr_n, height=400),
-        use_container_width=True,
+        width="stretch",
     )
 
 with c6:
@@ -95,7 +95,7 @@ with c6:
                        yaxis={"categoryorder": "total ascending"})
     st.plotly_chart(
         style_fig(fig, title="Top 15 Counties", height=430, n=int(co_df.shape[0])),
-        use_container_width=True,
+        width="stretch",
     )
 
 st.markdown("#### Crash Locations")
@@ -120,7 +120,7 @@ if LAT_COL and LON_COL:
         )
         fig.update_layout(mapbox_style="open-street-map", margin=dict(l=0, r=0, t=56, b=0))
         fig.update_traces(marker=dict(size=6))
-        st.plotly_chart(fig, use_container_width=True)
+        st.plotly_chart(fig, width="stretch")
     else:
         st.info("No crashes with valid Florida coordinates in the current filter selection.")
 else:
@@ -359,7 +359,7 @@ else:
                         "Crashes", n_matched,
                         hotspot_df=hs_for_map,
                     ),
-                    use_container_width=True,
+                    width="stretch",
                 )
                 st.caption(
                     "Raw crash count per tract, all three modes combined."
@@ -385,7 +385,7 @@ else:
                         cluster_cols = [c for c in ["CLUSTER_ID", "MODE", "N_CRASHES", "CENTER_LAT", "CENTER_LON"]
                                         if c in top_clusters.columns]
                         if len(top_clusters):
-                            st.dataframe(top_clusters[cluster_cols], use_container_width=True, hide_index=True)
+                            st.dataframe(top_clusters[cluster_cols], width="stretch", hide_index=True)
                         else:
                             st.info(f"No {cluster_mode_filter} clusters in the current filter selection.")
 
@@ -406,7 +406,7 @@ else:
                             zmin=0, zmax=100,
                             customdata_col="RATE_PER_100K_POP", hover_label=f"{rate_mode}/100k pop",
                         ),
-                        use_container_width=True,
+                        width="stretch",
                     )
                     st.caption(
                         f"Tracts colored by their **rank** among all tracts on {rate_mode} crashes "
@@ -433,7 +433,7 @@ else:
                         with st.expander(f"Top 15 highest-rate tracts for {rate_mode} (population \u2265 {MIN_TRACT_POP})", expanded=False):
                             st.dataframe(
                                 risk_tbl[cols].rename(columns=rename).round({"Rate / 100k pop": 1}),
-                                use_container_width=True, hide_index=True,
+                                width="stretch", hide_index=True,
                             )
                             if (risk_tbl["County"] == "Monroe").any():
                                 st.caption(
@@ -455,7 +455,7 @@ else:
                     f"3. {rate_mode} Share of All Micromobility Crashes per Tract (%)",
                     f"% {rate_mode}", n_matched, colorscale="Purples",
                 ),
-                use_container_width=True,
+                width="stretch",
             )
             st.caption(
                 f"{rate_mode} crashes \u00f7 (bicycle + e-bike + e-scooter crashes) in that tract, "
@@ -575,7 +575,7 @@ else:
                     title=f"4. {rate_mode} Statistically Significant Hot/Cold Spots (Getis-Ord Gi*)",
                 )
                 fig.update_layout(margin=dict(l=0, r=0, t=70, b=0))
-                st.plotly_chart(fig, use_container_width=True)
+                st.plotly_chart(fig, width="stretch")
                 legend_html = " &nbsp;&nbsp; ".join(
                     f'<span style="color:{bucket_colors[b]}">\u25a0</span> {b}'
                     for b in bucket_order if (tract_geo["GI_BUCKET"] == b).any()
@@ -604,7 +604,7 @@ else:
                             .rename(columns={rate_mode: f"{rate_mode} crashes", "GI_Z": "Gi* z-score",
                                              "GI_P": "p-value", "MORAN_Q": "Local Moran's I quadrant"})
                             .round({"Gi* z-score": 2, "p-value": 3}),
-                            use_container_width=True, hide_index=True,
+                            width="stretch", hide_index=True,
                         )
 
             st.markdown("---")
@@ -663,7 +663,7 @@ else:
                                      "Predicted (SPF)", "EB estimate", "Excess crashes"]]
                         .rename(columns={tract_pop_col: "Population", rate_mode: f"Observed {rate_mode} crashes"})
                         .round({"Predicted (SPF)": 2, "EB estimate": 2, "Excess crashes": 2}),
-                        use_container_width=True, hide_index=True,
+                        width="stretch", hide_index=True,
                     )
                     if did_not_converge:
                         st.warning(
