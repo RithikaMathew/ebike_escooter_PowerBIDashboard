@@ -89,7 +89,7 @@ Place `power_bi_export.csv`, `power_bi_export_demographics.csv`,
 `dashboard.py` (or upload them via the sidebar), then:
 
 ```bash
-streamlit run dashboard.py
+streamlit run app.py
 ```
 
 ## Data notes
