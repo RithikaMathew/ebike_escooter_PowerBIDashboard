@@ -33,7 +33,7 @@ tab0, tab1, tab2, tab3, tab4, tab5, tab6, tab7, tab8, tab9 = st.tabs([
     "\U0001F464 Driver Behavior & Citations",
     "\U0001F6E3 Roadway Infrastructure",
     "\U0001F9D1 Demographics",
-    "\U0001F4DD Narrative, Typing & Hotspots",
+    "\U0001F4DD Narrative & Crash Typing",
     "\U0001F50D Crash Causation",
     "\U0001F4CC Insights",
 ])

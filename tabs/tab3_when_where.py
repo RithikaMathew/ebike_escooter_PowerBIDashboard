@@ -6,6 +6,7 @@ with c1:
         color_discrete_map=MODE_COLORS,
         category_orders={"DOW": DOW_ORDER, "MODE": MODES},
     )
+    fig.update_traces(hovertemplate="%{fullData.name}, %{x}: %{y:,} crashes<extra></extra>")
     fig.update_layout(xaxis_title=None, yaxis_title="Crashes")
     st.plotly_chart(style_fig(fig, title="Crashes by Day of Week", n=total), width="stretch")
 
@@ -91,6 +92,7 @@ with c6:
         cm, y="COUNTY_NAME", x="count", color="MODE", orientation="h",
         color_discrete_map=MODE_COLORS, category_orders={"MODE": MODES},
     )
+    fig.update_traces(hovertemplate="%{fullData.name}, %{y}: %{x:,} crashes<extra></extra>")
     fig.update_layout(yaxis_title=None, xaxis_title="Crashes",
                        yaxis={"categoryorder": "total ascending"})
     st.plotly_chart(
@@ -115,7 +117,7 @@ if LAT_COL and LON_COL:
             opacity=0.55, zoom=5.4, height=560,
         )
         fig = style_fig(
-            fig, height=560,
+            fig, height=560, n=len(geo),
             title=f"Crash Locations by Mode ({len(geo):,} of {total:,} filtered crashes geocoded)",
         )
         fig.update_layout(map_style="open-street-map", margin=dict(l=0, r=0, t=56, b=0))
@@ -143,10 +145,13 @@ st.markdown("#### Crashes by Census Tract")
 with st.expander("Glossary & methodology -- what a 'tract' is, how these maps and numbers are built", expanded=True):
     st.markdown(
         """
-        **What's a census tract?** It's the Census Bureau's standard small-area unit --
-        roughly a neighborhood, typically 1,200-8,000 residents. Florida is divided into
-        about 5,000 of them. They're the building block for anything you see below;
-        `GEOID` is just each tract's unique ID number.
+        **In short:**
+        - **Census tract** = neighborhood-sized area (typically 1,200–8,000 residents; Florida has ~5,000)
+        - **Map 1** = Where are the most crashes?
+        - **Map 2** = Where are crashes high compared with population?
+        - **Map 3** = What type of crash makes up the crashes in that area?
+        - **DBSCAN hotspots** = Where are crashes repeatedly happening close together?
+        - **Spatiotemporal growth** = Which of those concentrated areas appear to be getting worse over time?
 
         **How a crash gets assigned to a tract.** Each geocoded crash's point (lat/lon) is
         **spatially joined** to the Florida census tract polygon it falls inside of
@@ -159,37 +164,32 @@ with st.expander("Glossary & methodology -- what a 'tract' is, how these maps an
         see are simply where population (and therefore ridership and crashes) concentrates:
         greater Jacksonville, Tampa-St. Pete, Orlando, and the whole
         Miami-Fort Lauderdale-West Palm Beach corridor down the southeast coast.
-        Scroll/zoom into any map to inspect a specific area.
 
         **The three maps, and what each one actually answers:**
-        - **Map 1 (raw counts)** -- "where do the most crashes happen." Dominated by
-          population density: a big city tract will out-count a small town even if the small
-          town is more dangerous per rider.
+        - **Map 1 (raw counts)** -- "where do the most crashes happen." Use the mode selector
+          to view Bicycle, E-Bike, E-Scooter, or all modes combined. Dominated by population
+          density: a big city tract will out-count a small town even if the small town is more
+          dangerous per rider.
         - **Map 2 (per 100,000 residents, colored by percentile rank)** -- "where is a
           resident most likely to be involved in a crash," controlling for how many people
-          live there. Use the mode selector below to switch which mode this is computed for.
-          Two caveats worth knowing: (1) tracts under 100 residents are dropped, since a rate
-          off a tiny population is statistical noise, not signal; (2) it's colored by each
-          tract's **rank** relative to other tracts (0-100), not the raw number, because a
-          couple of small-population tracts would otherwise blow out the color scale and make
-          the rest of the state look flat. Hover any tract to see its actual rate; the exact
-          highest-rate tracts are also listed in the table beneath the map. A rate can also
-          run high in tourist-heavy areas (like the Keys) simply because Census population
-          only counts year-round residents, not visitors actually riding there -- worth
-          keeping in mind before reading a high rate as "riskier for locals."
+          live there. Formula: `(crashes ÷ population) × 100,000`. That scaled rate is for
+          comparing tracts — it is **not** the actual crash count (e.g. 28 crashes in a tract
+          of 2,069 people → rate ≈ 1,353 per 100k means "if this ratio held in a city of
+          100,000, we'd expect ~1,353 crashes," not that 1,353 crashes happened). Tracts under
+          100 residents are dropped; the map is colored by **percentile rank** so tiny-population
+          outliers don't blow out the scale. Hover for the actual rate.
         - **Map 3 (mode share %)** -- "of the micromobility crashes in this tract, what
-          fraction were this mode," independent of the tract's total crash volume. A tract
-          with very few total crashes can show a misleadingly extreme % here (1 crash that
-          happens to be an e-bike crash = 100%) -- always read it alongside Map 1's count.
+          fraction were this mode." Always read alongside Map 1's count.
 
-        **Hotspot cluster centers** (optional overlay on Map 1, plus its own table) are a
-        different, arguably more direct tool for "where will this happen again": they come
-        from **DBSCAN**, a density-based clustering algorithm that groups crash points which
-        are close together in space (and time) into a cluster without needing tract
-        boundaries at all (`eda_analysis_combined.py` section 09d). A "cluster" is a
-        real recurring location, not an administrative shape, so it isn't subject to the
-        small-population noise that Map 2 has to work around. Bubble size / table rank =
-        crashes in that cluster.
+        **DBSCAN vs growth over time** (below Map 1):
+        - **DBSCAN** asks: *"Are there specific places where crashes keep happening close
+          together?"* — not merely "which neighborhood has the most crashes?" It groups nearby
+          crash points without using tract boundaries (`eda_analysis_combined.py` §09d).
+        - **Spatiotemporal growth** takes those same spatial clusters and splits each cluster's
+          crashes into an **early** vs **late** period (at the median year `SPLIT_YEAR` in the
+          hotspot file: years ≤ split = early, years > split = late) to ask which concentrations
+          are getting worse over time. Primary label = Poisson rate-ratio test (p < 0.05);
+          the 1.5× early→late heuristic is exploratory only.
         """
     )
 
@@ -266,9 +266,17 @@ else:
             for c in list(MODES) + ["TOTAL_MICRO"]:
                 tract_geo[c] = tract_geo[c].fillna(0)
 
-            # Mode picker for maps 2 & 3 -- these used to be hardcoded to E-Bike only.
+            # Mode picker: Map 1 can be All or a single mode; maps 2–4 use a single mode.
+            map1_options = ["All modes"] + list(MODES)
+            map1_mode = st.radio(
+                "Mode for Map 1 (raw counts)",
+                map1_options, index=0,
+                horizontal=True, key="tract_map1_mode",
+            )
+            map1_col = "TOTAL_MICRO" if map1_mode == "All modes" else map1_mode
+
             rate_mode = st.radio(
-                "Mode for maps 2 & 3 (per-capita rate + mode share)",
+                "Mode for maps 2–4 (per-capita rate, mode share, spatial stats, EB)",
                 MODES, index=MODES.index("E-Bike") if "E-Bike" in MODES else 0,
                 horizontal=True, key="tract_rate_mode",
             )
@@ -344,34 +352,45 @@ else:
             hs_for_map = None
             if hotspot_raw is not None and "MODE" in hotspot_raw.columns:
                 show_hotspots = st.checkbox(
-                    "Overlay hotspot cluster centers on Map 1 (sized by crashes in cluster)",
+                    "Overlay DBSCAN hotspot cluster centers on Map 1 (sized by crashes in cluster)",
                     value=True, key="tract_map_hotspot_overlay",
                 )
                 if show_hotspots:
-                    hs_for_map = hotspot_raw[hotspot_raw["MODE"].isin(sel_modes)].copy()
+                    if map1_mode == "All modes":
+                        hs_for_map = hotspot_raw[hotspot_raw["MODE"].isin(sel_modes)].copy()
+                    else:
+                        hs_for_map = hotspot_raw[hotspot_raw["MODE"] == map1_mode].copy()
 
             m1, m2 = st.columns(2)
             with m1:
+                map1_title = (
+                    "1. Micromobility Crashes per Tract (all modes)"
+                    if map1_mode == "All modes"
+                    else f"1. {map1_mode} Crashes per Tract"
+                )
                 st.plotly_chart(
                     choropleth(
-                        "TOTAL_MICRO",
-                        "1. Micromobility Crashes per Tract (all modes)",
+                        map1_col,
+                        map1_title,
                         "Crashes", n_matched,
                         hotspot_df=hs_for_map,
                     ),
                     width="stretch",
                 )
                 st.caption(
-                    "Raw crash count per tract, all three modes combined."
-                    + (" Teal bubbles = DBSCAN hotspot cluster centers for the sidebar's "
-                       "selected mode(s), sized by crashes in that cluster." if show_hotspots else "")
+                    (f"Raw {map1_mode} crash count per tract." if map1_mode != "All modes"
+                     else "Raw crash count per tract, all three modes combined.")
+                    + (" Teal bubbles = DBSCAN hotspot cluster centers "
+                       "(places where crashes keep happening close together), sized by "
+                       "crashes in that cluster." if show_hotspots else "")
                 )
                 if show_hotspots and hs_for_map is not None and len(hs_for_map) and "N_CRASHES" in hs_for_map.columns:
                     with st.expander("Top 10 hotspot clusters (recurring crash locations, not tied to tract boundaries)", expanded=True):
                         st.markdown(
-                            "These are DBSCAN spatiotemporal clusters of actual crash locations -- the most "
-                            "direct read on *where crashes keep recurring*, since they're not diluted by "
-                            "population or forced into a census tract's arbitrary shape."
+                            "These are **DBSCAN** clusters of actual crash locations — asking "
+                            "*“Are there specific places where crashes keep happening close together?”* "
+                            "rather than *“Which neighborhood has the most crashes?”* "
+                            "They are not diluted by population or forced into a census tract shape."
                         )
                         cluster_mode_options = ["All modes shown on Map 1"] + [m for m in MODES if m in hs_for_map["MODE"].unique()]
                         cluster_mode_filter = st.selectbox(
@@ -381,8 +400,27 @@ else:
                         if cluster_mode_filter != "All modes shown on Map 1":
                             top_clusters = top_clusters[top_clusters["MODE"] == cluster_mode_filter]
                         top_clusters["N_CRASHES"] = pd.to_numeric(top_clusters["N_CRASHES"], errors="coerce").fillna(0)
-                        top_clusters = top_clusters.nlargest(10, "N_CRASHES")
-                        cluster_cols = [c for c in ["CLUSTER_ID", "MODE", "N_CRASHES", "CENTER_LAT", "CENTER_LON"]
+                        top_clusters = top_clusters.nlargest(10, "N_CRASHES").copy()
+                        # County from joining cluster center to tract polygons
+                        if GEOPANDAS_AVAILABLE and len(top_clusters) and {"CENTER_LAT", "CENTER_LON"}.issubset(top_clusters.columns):
+                            try:
+                                centers = gpd.GeoDataFrame(
+                                    top_clusters,
+                                    geometry=gpd.points_from_xy(
+                                        top_clusters["CENTER_LON"], top_clusters["CENTER_LAT"]
+                                    ),
+                                    crs=4326,
+                                )
+                                joined_c = gpd.sjoin(
+                                    centers, tracts_raw[["GEOID", "geometry"]],
+                                    how="left", predicate="within",
+                                )
+                                top_clusters["County"] = (
+                                    joined_c["GEOID"].astype(str).str.slice(2, 5).map(FL_COUNTY_FIPS).values
+                                )
+                            except Exception:
+                                top_clusters["County"] = None
+                        cluster_cols = [c for c in ["CLUSTER_ID", "MODE", "County", "N_CRASHES", "CENTER_LAT", "CENTER_LON"]
                                         if c in top_clusters.columns]
                         if len(top_clusters):
                             st.dataframe(top_clusters[cluster_cols], width="stretch", hide_index=True)
@@ -409,13 +447,14 @@ else:
                         width="stretch",
                     )
                     st.caption(
-                        f"Tracts colored by their **rank** among all tracts on {rate_mode} crashes "
-                        f"\u00f7 population \u00d7 100,000 (hover a tract for its actual rate) -- "
-                        f"percentile keeps the color spread readable, since the raw rate is dominated "
-                        f"by whichever tract happens to have the smallest population. Tracts under "
-                        f"{MIN_TRACT_POP} residents ({n_small_pop:,} of them) are excluded and shown "
-                        f"blank, since a rate off a tiny population isn't reliable. See the exact "
-                        f"highest-rate tracts in the table below."
+                        f"**Crash rate = (Number of {rate_mode} crashes ÷ Population) × 100,000.** "
+                        f"That number is a *scaled rate for comparing tracts*, not the actual crash "
+                        f"count. Example: 28 crashes ÷ 2,069 people × 100,000 ≈ 1,353.3 means "
+                        f"“if this same ratio existed in a population of 100,000, we'd expect about "
+                        f"1,353 crashes” — there were still only 28 actual crashes. "
+                        f"Tracts colored by their **rank** among all tracts (hover for the actual "
+                        f"rate). Tracts under {MIN_TRACT_POP} residents ({n_small_pop:,} of them) "
+                        f"are excluded and shown blank."
                     )
 
                     risk_tbl = tract_geo[tract_geo["RATE_PER_100K_POP"].notna()].copy()
@@ -464,6 +503,153 @@ else:
                 f"this alongside Map 1's raw count, not in isolation."
             )
 
+            # --- Spatiotemporal growth explorer (moved from Narrative tab) ---
+            st.markdown("---")
+            st.markdown("#### Spatiotemporal growth — which concentrated areas are getting worse?")
+            st.caption(
+                "**DBSCAN** (overlay / Top 10 above) answers *where are crashes geographically "
+                "concentrated?* This section adds the time dimension: among those clusters, "
+                "*which appear to be getting worse over time?* "
+                "Early vs late = years ≤ vs > the median `SPLIT_YEAR` stored in the hotspot file."
+            )
+            if hotspot_raw is not None and "MODE" in hotspot_raw.columns:
+                hs = hotspot_raw[hotspot_raw["MODE"].isin(sel_modes)].copy()
+                has_periods = {"N_EARLY_PERIOD", "N_LATE_PERIOD"}.issubset(hs.columns)
+                stats_test_available = False
+                if has_periods:
+                    with st.expander("Classification: statistical test is primary; 1.5× is exploratory", expanded=False):
+                        split_years = (
+                            hs["SPLIT_YEAR"].dropna().unique().tolist()
+                            if "SPLIT_YEAR" in hs.columns else []
+                        )
+                        split_note = (
+                            f" Early/late split year(s) in this file: "
+                            f"{', '.join(str(int(y)) for y in sorted(split_years))}."
+                            if split_years else ""
+                        )
+                        st.markdown(
+                            f"""
+                            - **Primary:** two-sample Poisson rate-ratio test (exact binomial comparing
+                              early vs late counts, equal period lengths assumed). Significant growth =
+                              p < 0.05.
+                            - **Secondary / exploratory:** late-period count > 1.5× early-period count
+                              (with ≥5 late crashes). Small counts can clear 1.5× by chance (2→4), so
+                              treat the heuristic as a screen, not the main label.
+                            - **Early vs late:** crashes in each cluster are split at the median year
+                              (`SPLIT_YEAR`). Years ≤ split = early; years > split = late.{split_note}
+                            """
+                        )
+                    try:
+                        from scipy import stats as _stats
+
+                        def _rate_ratio_test(n1, n2):
+                            n_total = n1 + n2
+                            if n_total == 0 or pd.isna(n1) or pd.isna(n2):
+                                return np.nan, np.nan
+                            pval = _stats.binomtest(int(n2), int(n_total), 0.5, alternative="two-sided").pvalue
+                            rr = (n2 / n1) if n1 > 0 else np.inf
+                            return rr, pval
+
+                        _rr = hs.apply(
+                            lambda r: _rate_ratio_test(r["N_EARLY_PERIOD"], r["N_LATE_PERIOD"]), axis=1
+                        )
+                        hs["RATE_RATIO"] = [x[0] for x in _rr]
+                        hs["GROWTH_PVAL"] = [x[1] for x in _rr]
+                        hs["SIG_GROWTH"] = hs["GROWTH_PVAL"] < 0.05
+                        stats_test_available = True
+                    except ImportError:
+                        st.warning(
+                            "`scipy` isn't installed, so the Poisson rate-ratio test can't run. "
+                            "Install it (`pip install scipy`) and re-run the dashboard."
+                        )
+
+                filter_options = ["All clusters"]
+                if stats_test_available:
+                    filter_options.append(
+                        "Statistically significant growth (Poisson rate-ratio test, p<0.05)"
+                    )
+                if has_periods:
+                    filter_options.append("Emerging (exploratory heuristic: >1.5x growth)")
+
+                default_idx = 1 if stats_test_available else 0
+                cluster_filter = st.selectbox(
+                    "Filter clusters", filter_options, index=default_idx, key="hotspot_cluster_filter",
+                )
+                if cluster_filter.startswith("Statistically significant") and stats_test_available:
+                    hs = hs[hs["SIG_GROWTH"] == True]  # noqa: E712
+                elif "1.5x" in cluster_filter and "EMERGING" in hs.columns:
+                    hs = hs[hs["EMERGING"] == True]  # noqa: E712
+
+                st.caption(
+                    f"**{len(hs):,}** clusters match the Mode filter in the sidebar "
+                    f"(hotspot table isn't affected by Year/Severity filters — it's "
+                    f"precomputed per mode over the full time range)."
+                )
+                if len(hs) and {"CENTER_LAT", "CENTER_LON"}.issubset(hs.columns):
+                    hover_cols = [
+                        "CLUSTER_ID", "N_CRASHES", "N_EARLY_PERIOD", "N_LATE_PERIOD", "GROWTH_RATIO",
+                    ]
+                    if stats_test_available:
+                        hover_cols += ["RATE_RATIO", "GROWTH_PVAL"]
+                    fig = px.scatter_map(
+                        hs, lat="CENTER_LAT", lon="CENTER_LON", color="MODE",
+                        size="N_CRASHES", size_max=28,
+                        color_discrete_map=MODE_COLORS, category_orders={"MODE": MODES},
+                        hover_data=[c for c in hover_cols if c in hs.columns],
+                        zoom=5.4, height=560,
+                    )
+                    fig = style_fig(
+                        fig, height=560, n=len(hs),
+                        title="Cluster Centers — growth explorer (bubble size = crashes in cluster)",
+                    )
+                    fig.update_layout(map_style="open-street-map", margin=dict(l=0, r=0, t=70, b=0))
+                    st.plotly_chart(fig, width="stretch")
+
+                    sort_col = (
+                        "GROWTH_PVAL" if stats_test_available
+                        else ("GROWTH_RATIO" if "GROWTH_RATIO" in hs.columns else hs.columns[0])
+                    )
+                    ascending = sort_col == "GROWTH_PVAL"
+                    display_hs = hs.sort_values(sort_col, ascending=ascending).copy()
+                    if stats_test_available:
+                        display_hs = display_hs.rename(columns={
+                            "RATE_RATIO": "Rate ratio (late/early)", "GROWTH_PVAL": "p-value",
+                        })
+                        display_hs = display_hs.round({"Rate ratio (late/early)": 2, "p-value": 4})
+                    if GEOPANDAS_AVAILABLE and {"CENTER_LAT", "CENTER_LON"}.issubset(display_hs.columns):
+                        try:
+                            _c = gpd.GeoDataFrame(
+                                display_hs,
+                                geometry=gpd.points_from_xy(
+                                    display_hs["CENTER_LON"], display_hs["CENTER_LAT"]
+                                ),
+                                crs=4326,
+                            )
+                            _j = gpd.sjoin(
+                                _c, tracts_raw[["GEOID", "geometry"]], how="left", predicate="within",
+                            )
+                            display_hs["County"] = (
+                                _j["GEOID"].astype(str).str.slice(2, 5).map(FL_COUNTY_FIPS).values
+                            )
+                        except Exception:
+                            pass
+                    st.dataframe(display_hs, width="stretch", hide_index=True)
+                else:
+                    st.info("No clusters match the current Mode selection.")
+                st.caption(
+                    "Exploratory spatial DBSCAN + early/late period split "
+                    "(`eda_analysis_combined.py` §09d) — not a validated hotspot pipeline. "
+                    "Primary: Poisson rate-ratio p<0.05. Exploratory: late > 1.5× early with ≥5 late crashes."
+                )
+            else:
+                st.markdown(
+                    f"""<div class="section-note">
+                    No <code>{DEFAULT_HOTSPOT_PATH}</code> loaded — add it under <b>Data Source</b>
+                    in the sidebar to enable the growth explorer.
+                    </div>""",
+                    unsafe_allow_html=True,
+                )
+
             st.markdown("---")
             st.markdown("#### Statistically Significant Hot/Cold Spots (Getis-Ord Gi*)")
             with st.expander("Why this map is different from Maps 1-3 and the DBSCAN clusters", expanded=False):
@@ -494,9 +680,7 @@ else:
                 )
 
             try:
-                import libpysal
-                from esda.getisord import G_Local
-                from esda.moran import Moran_Local
+                from esda.getisord import G_Local  # noqa: F401
                 SPATIAL_STATS_AVAILABLE = True
             except ImportError:
                 SPATIAL_STATS_AVAILABLE = False
@@ -506,38 +690,19 @@ else:
                 )
 
             if SPATIAL_STATS_AVAILABLE:
-                @st.cache_resource(show_spinner="Building spatial weights (once per tract file)...")
-                def _build_tract_weights(geoid_tuple, _geom_for_cache):
-                    w = libpysal.weights.Queen.from_dataframe(
-                        _geom_for_cache, use_index=True, silence_warnings=True,
-                    )
-                    w = libpysal.weights.fill_diagonal(w, 1.0)
-                    w.transform = "r"
-                    return w
-
-                weights = _build_tract_weights(tuple(tract_geo["GEOID"].astype(str)), tract_geo[["GEOID", "geometry"]])
-
-                gi_y = tract_geo[rate_mode].fillna(0).values.astype(float)
-                gi = G_Local(gi_y, weights, star=None, permutations=999, seed=0)
-                lm = Moran_Local(gi_y, weights, permutations=999, seed=0)
-
-                tract_geo["GI_Z"] = gi.Zs
-                tract_geo["GI_P"] = gi.p_sim
-
-                def _gi_bucket(z, p):
-                    if pd.isna(p) or p > 0.10:
-                        return "Not significant"
-                    conf = "99%" if p <= 0.01 else ("95%" if p <= 0.05 else "90%")
-                    return f"Hot spot ({conf} confidence)" if z > 0 else f"Cold spot ({conf} confidence)"
-
-                tract_geo["GI_BUCKET"] = [_gi_bucket(z, p) for z, p in zip(tract_geo["GI_Z"], tract_geo["GI_P"])]
-
-                moran_labels = {1: "High-High (cluster)", 2: "Low-High (outlier)",
-                                 3: "Low-Low (cluster)", 4: "High-Low (outlier)"}
-                tract_geo["MORAN_Q"] = [
-                    moran_labels.get(q, "n/a") if p <= 0.05 else "Not significant"
-                    for q, p in zip(lm.q, lm.p_sim)
-                ]
+                stats = spatial_cluster_stats_for_mode(tract_geo, rate_mode)
+                if stats:
+                    tract_geo["GI_BUCKET"] = stats["gi_buckets"]
+                    tract_geo["MORAN_Q"] = stats["moran_q"]
+                    tract_geo["GI_Z"] = stats["gi_z"]
+                    tract_geo["GI_P"] = stats["gi_p"]
+                    n_hot = stats["n_hot_spots"]
+                    n_cold = stats["n_cold_spots"]
+                    n_hl_outlier = stats["n_high_low_outliers"]
+                else:
+                    tract_geo["GI_BUCKET"] = "Not significant"
+                    tract_geo["MORAN_Q"] = "Not significant"
+                    n_hot = n_cold = n_hl_outlier = 0
 
                 bucket_order = [
                     "Hot spot (99% confidence)", "Hot spot (95% confidence)", "Hot spot (90% confidence)",
@@ -582,9 +747,6 @@ else:
                 )
                 st.markdown(f"<div style='font-size:0.85em'>{legend_html}</div>", unsafe_allow_html=True)
 
-                n_hot = tract_geo["GI_BUCKET"].str.startswith("Hot spot").sum()
-                n_cold = tract_geo["GI_BUCKET"].str.startswith("Cold spot").sum()
-                n_hl_outlier = (tract_geo["MORAN_Q"] == "High-Low (outlier)").sum()
                 st.caption(
                     f"**{n_hot:,}** tracts are statistically significant {rate_mode} hot spots and "
                     f"**{n_cold:,}** are significant cold spots, out of {len(tract_geo):,} tracts "
@@ -609,20 +771,28 @@ else:
 
             st.markdown("---")
             st.markdown("#### Empirical Bayes Excess-Crash Ranking (Highway Safety Manual method)")
-            with st.expander("Why this ranking is different from the raw-rate table above", expanded=False):
+            with st.expander("Formula, SPF scope, and why EB", expanded=False):
                 st.markdown(
-                    """
-                    Ranking tracts by raw rate (or percentile) has a well-known problem in safety
-                    analysis called **regression to the mean**: a tract with one genuinely unlucky
-                    year looks "high risk" in a snapshot like this and will often look normal again
-                    on its own next year, with no intervention needed. The **Empirical Bayes (EB)**
-                    method from the AASHTO Highway Safety Manual -- the standard approach state DOTs
-                    use to prioritize sites -- corrects for this by blending each tract's *observed*
-                    count with a *predicted* count from a safety performance function (SPF, a
-                    negative-binomial regression of crashes on population fit across every tract
-                    statewide), weighted by how reliable each source is for that tract. Tracts that
-                    stay high after this correction are the ones worth prioritizing; tracts that drop
-                    out of the ranking were likely just unlucky in this snapshot.
+                    f"""
+                    Ranking tracts by raw rate has a well-known problem called **regression to the
+                    mean**: one unlucky year can look "high risk" and then normalize on its own.
+                    **Empirical Bayes (EB)** (AASHTO Highway Safety Manual) blends each tract's
+                    *observed* count with a *predicted* count from a safety performance function
+                    (SPF).
+
+                    **Exact formulas used here** (negative-binomial SPF, NB2):
+                    - `predicted = exp(β₀ [+ county effects]) × population`
+                    - `k = 1 / α` (α = dispersion from the fit)
+                    - `w = k / (k + predicted)`
+                    - `EB estimate = w × predicted + (1 − w) × observed`
+                    - `Excess crashes = observed − EB estimate`
+
+                    **SPF scope:** trained on **all Florida tracts** for the selected mode
+                    (`{rate_mode}`), with population as exposure. When stable, the model also
+                    includes **county fixed effects** so regional differences are absorbed while
+                    still pooling information statewide — better for sparse modes than fitting
+                    separate county SPFs. If the county-FE fit fails, we fall back to a
+                    statewide intercept-only SPF and note that below.
                     """
                 )
             try:
@@ -634,28 +804,78 @@ else:
 
             if STATSMODELS_AVAILABLE and has_pop:
                 eb_df = tract_geo[["GEOID", tract_pop_col, rate_mode]].copy()
-                eb_df = eb_df[(eb_df[tract_pop_col] > 0) & eb_df[tract_pop_col].notna()]
+                eb_df = eb_df[(eb_df[tract_pop_col] > 0) & eb_df[tract_pop_col].notna()].copy()
+                eb_df["County"] = eb_df["GEOID"].astype(str).str.slice(2, 5).map(FL_COUNTY_FIPS)
                 try:
                     import warnings as _warnings
+                    spf_used = "statewide intercept-only"
+                    spf_family = "negative binomial"
+                    y = eb_df[rate_mode].astype(float)
+                    exp = eb_df[tract_pop_col].astype(float)
+                    X_intercept = np.ones((len(eb_df), 1))
+
+                    def _predict_mean(res, model_family):
+                        if model_family == "negative binomial":
+                            pred = np.asarray(res.predict(which="mean"))
+                        else:
+                            pred = np.asarray(res.predict())
+                        return pred.ravel() if pred.ndim > 1 else pred
+
+                    def _try_nb(design, label):
+                        nb = sm.NegativeBinomial(
+                            y, design, exposure=exp, loglike_method="nb2",
+                        )
+                        res = nb.fit(disp=0, maxiter=200)
+                        pred = _predict_mean(res, "negative binomial")
+                        if np.isfinite(pred).all():
+                            return res, label, pred, "negative binomial"
+                        return None
+
+                    def _try_poisson(design, label):
+                        po = sm.GLM(y, design, family=sm.families.Poisson(), exposure=exp)
+                        res = po.fit(maxiter=200)
+                        pred = _predict_mean(res, "poisson")
+                        if np.isfinite(pred).all():
+                            return res, label, pred, "poisson"
+                        return None
+
                     with _warnings.catch_warnings(record=True) as _caught:
                         _warnings.simplefilter("always")
-                        nb = sm.NegativeBinomial(
-                            eb_df[rate_mode].astype(float), np.ones((len(eb_df), 1)),
-                            exposure=eb_df[tract_pop_col].astype(float), loglike_method="nb2",
-                        )
-                        nb_res = nb.fit(disp=0)
-                    did_not_converge = any("did not converge" in str(w.message).lower() for w in _caught)
+                        county_dummies = pd.get_dummies(eb_df["County"].fillna("Unknown"), drop_first=True)
+                        use_county_fe = county_dummies.shape[1] >= 2 and y.sum() >= 50
+                        fit = None
+                        if use_county_fe:
+                            X_fe = np.column_stack([np.ones(len(eb_df)), county_dummies.values.astype(float)])
+                            fit = _try_nb(X_fe, "statewide with county fixed effects (NB)")
+                            if fit is None:
+                                fit = _try_poisson(X_fe, "statewide with county fixed effects (Poisson fallback)")
+                        if fit is None:
+                            fit = _try_nb(X_intercept, "statewide intercept-only (NB)")
+                        if fit is None:
+                            fit = _try_poisson(X_intercept, "statewide intercept-only (Poisson fallback)")
+                        if fit is None:
+                            raise ValueError("SPF fit failed for negative binomial and Poisson forms")
+                        spf_res, spf_used, predicted, spf_family = fit
 
-                    const, alpha = nb_res.params["const"], max(nb_res.params["alpha"], 1e-6)
-                    if not np.isfinite(const) or not np.isfinite(alpha):
-                        raise ValueError("model produced non-finite parameters")
+                        # EB shrinkage uses NB dispersion even when SPF mean came from Poisson.
+                        nb_alpha = sm.NegativeBinomial(
+                            y, X_intercept, exposure=exp, loglike_method="nb2",
+                        ).fit(disp=0, maxiter=200)
+                        alpha = max(float(nb_alpha.params.get("alpha", 1.0)), 1e-6)
+                        if not np.isfinite(alpha):
+                            alpha = 1.0
+
+                    did_not_converge = any("did not converge" in str(w.message).lower() for w in _caught)
+                    if not np.isfinite(predicted).all():
+                        raise ValueError("SPF produced non-finite predictions after fallback chain")
+
                     k = 1 / alpha
-                    predicted = np.exp(const) * eb_df[tract_pop_col]
                     weight = k / (k + predicted)
+                    observed = y.values
                     eb_df["Predicted (SPF)"] = predicted
-                    eb_df["EB estimate"] = weight * predicted + (1 - weight) * eb_df[rate_mode]
-                    eb_df["Excess crashes"] = eb_df[rate_mode] - eb_df["EB estimate"]
-                    eb_df["County"] = eb_df["GEOID"].astype(str).str.slice(2, 5).map(FL_COUNTY_FIPS)
+                    eb_df["EB estimate"] = weight * predicted + (1 - weight) * observed
+                    eb_df["Excess crashes"] = observed - eb_df["EB estimate"]
+                    eb_df["EB_PCTL"] = eb_df["EB estimate"].rank(pct=True) * 100
 
                     top_excess = eb_df.sort_values("Excess crashes", ascending=False).head(15)
                     st.dataframe(
@@ -665,20 +885,78 @@ else:
                         .round({"Predicted (SPF)": 2, "EB estimate": 2, "Excess crashes": 2}),
                         width="stretch", hide_index=True,
                     )
+                    with st.expander("What each column means (plain language)", expanded=True):
+                        ex = top_excess.iloc[0] if len(top_excess) else None
+                        if ex is not None:
+                            st.markdown(
+                                f"""
+                                | Column | What it means |
+                                |---|---|
+                                | **Population** = {ex[tract_pop_col]:,.0f} | About {ex[tract_pop_col]:,.0f} people live in this census tract. |
+                                | **Observed {rate_mode} crashes** = {ex[rate_mode]:,.0f} | You actually recorded {ex[rate_mode]:,.0f} {rate_mode.lower()} crashes in this tract. |
+                                | **Predicted (SPF)** = {ex['Predicted (SPF)']:.2f} | Based on the Florida SPF (population ± county), the model says you'd normally expect about {ex['Predicted (SPF)']:.2f} crashes in a tract like this. |
+                                | **EB estimate** = {ex['EB estimate']:.2f} | After shrinking the raw count toward the SPF (because {ex[rate_mode]:,.0f} might be unusually high or low by chance), EB estimates the underlying crash level at about {ex['EB estimate']:.2f}. |
+                                | **Excess crashes** = {ex['Excess crashes']:.2f} | About {ex['Excess crashes']:.2f} crashes above (or below, if negative) what we'd consider the normal/expected level. |
+                                """
+                            )
+                        else:
+                            st.caption("No tracts available to illustrate.")
+
+                    eb_map = tract_geo[["geometry", "GEOID"]].merge(
+                        eb_df[["GEOID", "EB estimate", "EB_PCTL", "Predicted (SPF)",
+                               "Excess crashes", rate_mode, tract_pop_col, "County"]],
+                        on="GEOID", how="left",
+                    )
+                    hover_cd = np.column_stack([
+                        eb_map["EB estimate"].fillna(0),
+                        eb_map["Predicted (SPF)"].fillna(0),
+                        eb_map["Excess crashes"].fillna(0),
+                        eb_map[rate_mode].fillna(0),
+                        eb_map[tract_pop_col].fillna(0),
+                        eb_map["County"].fillna("").astype(str),
+                    ])
+                    fig = go.Figure(go.Choroplethmap(
+                        geojson=eb_map.geometry.__geo_interface__,
+                        locations=eb_map.index, z=eb_map["EB_PCTL"],
+                        zmin=0, zmax=100, colorscale="YlOrRd",
+                        marker_opacity=0.7, marker_line_width=0.3,
+                        colorbar_title="EB percentile",
+                        customdata=hover_cd,
+                        hovertemplate=(
+                            "County: %{customdata[5]}<br>"
+                            "EB estimate: %{customdata[0]:.2f}<br>"
+                            "Observed: %{customdata[3]:.0f}<br>"
+                            "Predicted (SPF): %{customdata[1]:.2f}<br>"
+                            "Excess: %{customdata[2]:.2f}<br>"
+                            "Population: %{customdata[4]:,.0f}"
+                            "<extra></extra>"
+                        ),
+                    ))
+                    fig.update_layout(
+                        map_style="open-street-map", map_zoom=5.4,
+                        map_center={"lat": 27.8, "lon": -81.7},
+                    )
+                    fig = style_fig(
+                        fig, height=520, n=int(eb_df.shape[0]),
+                        title=f"5. {rate_mode} Empirical Bayes Estimate by Tract (percentile rank)",
+                    )
+                    fig.update_layout(margin=dict(l=0, r=0, t=70, b=0))
+                    st.plotly_chart(fig, width="stretch")
+                    st.caption(
+                        "Colored by **EB estimate percentile** across tracts (0–100). Hover any tract "
+                        "for the actual EB estimate, observed count, SPF prediction, excess, and population."
+                    )
+
                     if did_not_converge:
                         st.warning(
-                            f"The statewide SPF for {rate_mode} didn't fully converge -- likely because "
-                            f"{rate_mode} crashes are too sparse per tract for this fit to be stable "
-                            f"(common for a lower-volume mode). Treat this ranking as indicative rather "
-                            f"than final; it'll be more reliable on Bicycle (higher counts) or on the "
-                            f"combined `TOTAL_MICRO` count."
+                            f"The SPF for {rate_mode} didn't fully converge -- likely because "
+                            f"{rate_mode} crashes are too sparse per tract. Treat this ranking as "
+                            f"indicative rather than final."
                         )
                     st.caption(
-                        f"Top 15 tracts by EB-adjusted excess {rate_mode} crashes (observed minus what "
-                        f"the statewide population-based model predicts, after EB shrinkage toward that "
-                        f"prediction). Dispersion parameter alpha={alpha:.3f} (higher means crash counts "
-                        f"are more overdispersed than a simple Poisson model assumes -- typical for crash "
-                        f"data, and the reason a negative-binomial SPF is used instead of plain Poisson)."
+                        f"Top 15 tracts by EB-adjusted excess {rate_mode} crashes. "
+                        f"SPF: **{spf_used}**. Dispersion α={alpha:.3f} "
+                        f"(from intercept-only NB; SPF mean from {spf_family})."
                     )
                 except Exception as e:
                     st.warning(f"Empirical Bayes model failed to fit on the current filter selection: {e}")

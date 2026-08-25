@@ -53,7 +53,7 @@ else:
             text=att["pct"].round(1).astype(str) + "%",
         )
         fig.update_layout(yaxis_title="% of narrative-classified crashes", xaxis_title=None)
-        st.plotly_chart(style_fig(fig, title="Fault Attribution by Mode"), width="stretch")
+        st.plotly_chart(style_fig(fig, title="Fault Attribution by Mode", n=len(cdf)), width="stretch")
         st.caption(
             "Driver-attributable: failed to yield turning, ran stop/red light, following "
             "too close, distracted, speeding/reckless, impaired, dooring. Non-motorist-"
@@ -87,7 +87,7 @@ else:
             yaxis={"categoryorder": "total ascending"}, barmode="stack",
         )
         st.plotly_chart(
-            style_fig(fig, title="Infrastructure Type at Impact, by Mode", height=440),
+            style_fig(fig, title="Infrastructure Type at Impact, by Mode", height=440, n=len(cdf)),
             width="stretch",
         )
         infra_pct = cdf["INFRA_LABEL"].value_counts(normalize=True) * 100
@@ -117,7 +117,7 @@ else:
             text=np.round(pivot_pct.values, 1), texttemplate="%{text}",
         ))
         st.plotly_chart(
-            style_fig(fig, title=f"Primary Cause x Location -- {mode_label} (row %)", height=420),
+            style_fig(fig, title=f"Primary Cause x Location -- {mode_label} (row %)", height=420, n=len(cdf)),
             width="stretch",
         )
         bike_lane_row = pivot_pct.loc["Bike lane"] if "Bike lane" in pivot_pct.index else None
@@ -146,7 +146,7 @@ else:
             fig.update_layout(yaxis_title=None, xaxis_title="% of sidewalk crashes",
                                yaxis={"categoryorder": "total ascending"})
             st.plotly_chart(
-                style_fig(fig, title=f"Top Causes of Sidewalk Crashes ({', '.join(present_modes)})", height=340),
+                style_fig(fig, title=f"Top Causes of Sidewalk Crashes ({', '.join(present_modes)})", height=340, n=len(sw)),
                 width="stretch",
             )
             dwc = sw["CAUSE_LABEL"].value_counts(normalize=True).get("Sidewalk driveway conflict", 0) * 100
@@ -174,7 +174,7 @@ else:
             color_discrete_map={"yes": "#C0392B", "unclear": "#BDBDBD", "no": "#81C784"},
         )
         fig.update_layout(yaxis_title="% of narrative-classified crashes", xaxis_title=None)
-        st.plotly_chart(style_fig(fig, title="Speed Flagged as Contributing (Driver or Rider), by Mode"), width="stretch")
+        st.plotly_chart(style_fig(fig, title="Speed Flagged as Contributing (Driver or Rider), by Mode", n=len(cdf)), width="stretch")
         st.caption(
             "**Not micromobility-speed-specific.** This flags whether the narrative says "
             "*anyone's* speed -- the rider's or the driver's -- contributed to the crash; it "
@@ -210,7 +210,7 @@ else:
                 fig.update_layout(yaxis_title=None, xaxis_title="% of hit-and-run crashes",
                                    yaxis={"categoryorder": "total ascending"})
                 st.plotly_chart(
-                    style_fig(fig, title=f"Hit-and-Run Location (n={len(hr):,})", height=320),
+                    style_fig(fig, title="Hit-and-Run Location", height=320, n=len(hr)),
                     width="stretch",
                 )
             else:
@@ -225,7 +225,7 @@ else:
                 fig.update_layout(yaxis_title=None, xaxis_title="% of wrong-way-riding crashes",
                                    yaxis={"categoryorder": "total ascending"})
                 st.plotly_chart(
-                    style_fig(fig, title=f"Wrong-Way Riding Location (n={len(wwr):,})", height=320),
+                    style_fig(fig, title="Wrong-Way Riding Location", height=320, n=len(wwr)),
                     width="stretch",
                 )
             else:

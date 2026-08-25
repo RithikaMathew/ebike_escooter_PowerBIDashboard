@@ -14,27 +14,26 @@ The dashboard reads from CSVs produced by a multi-stage pipeline. Run in order:
    crash narratives into Bicycle / E-Bike / E-Scooter / Other using
    Qwen2.5-72B served via vLLM. Produces the narrative-label output the next
    step consumes.
-2. **`eda_analysis_combined.py`** — the main EDA pipeline. Merges
-   crash_event, non_motorist, and vehicle tables with the narrative labels
-   and FDOT roadway data, and writes:
+2. **`eda_analysis_combined.py`** (in-repo copy may be named
+   `eda_analysis_combined_BicycleSeparate (2).py`) — the main EDA pipeline.
+   Merges crash_event, non_motorist, and vehicle tables with the narrative
+   labels and FDOT roadway data, and writes:
    - `power_bi_export.csv` — crash-level export (mode, timing, location,
      severity, driver-behavior flags, citations, roadway infra, road type,
      posted speed, lat/lon)
    - `power_bi_export_demographics.csv` — person-level age/gender export
    - `dashboard_meta.csv` — pipeline funnel counts (raw → geocoded →
      matched → final)
-   - `results/figures/` — static PNGs by section, auto-discovered and
-     embedded into the dashboard's tabs
-3. **`dashboard.py`** — the Streamlit app itself.
+   - `spatiotemporal_hotspots_by_mode.csv` — DBSCAN clusters + early/late growth
+   - `results/figures/` — static PNGs by section (shown only when there is
+     **no** interactive Plotly equivalent on that tab)
+3. **`app.py`** — Streamlit entry point (`dashboard.py` delegates here).
 
-**If you add a new figure to `eda_analysis_combined.py` and don't see it in
-the dashboard**, it's almost always one of these two things, not a dashboard
-bug — see the FAQ item on this below:
-- you haven't re-run `eda_analysis_combined.py` since adding the figure, so
-  the PNG doesn't exist on disk yet, or
-- it does exist, but it's sitting inside a **collapsed** "🖼️ Pipeline
-  figures from `eda_analysis_combined.py`" expander at the bottom of the
-  relevant tab — click to open it.
+**Pipeline PNG expanders** at the bottom of a tab only list figures that are
+*not* already covered by a live chart. Pedestrian-context PNGs are omitted
+(outside active-mode scope). If a new pipeline figure never appears, either
+re-run the EDA script or confirm it isn’t already skipped as an interactive
+duplicate.
 
 ## Setup
 
@@ -82,15 +81,38 @@ source venv/bin/activate       # Windows: venv\Scripts\activate
 pip3 install -r requirements.txt
 ```
 
+`requirements.txt` includes Streamlit/Plotly plus spatial and EB deps:
+`geopandas`, `shapely`, `libpysal`, `esda`, `statsmodels`, `scipy`,
+`scikit-learn`.
+
 ## Running locally
 
 Place `power_bi_export.csv`, `power_bi_export_demographics.csv`,
-`dashboard_meta.csv`, and the `results/figures/` folder next to
-`dashboard.py` (or upload them via the sidebar), then:
+`dashboard_meta.csv`, `spatiotemporal_hotspots_by_mode.csv` (optional),
+`census_tracts.geojson` (optional), and the `results/figures/` folder next
+to `app.py` (or upload them via the sidebar), then:
 
 ```bash
 streamlit run app.py
 ```
+
+## When & Where tab (maps & hotspots)
+
+- **Map 1** — raw crash counts per census tract, selectable by mode (or all)
+- **Map 2** — crashes per 100,000 residents (percentile-colored; rate formula
+  explained in-tab)
+- **Map 3** — mode share of micromobility crashes per tract
+- **DBSCAN overlay / Top 10** — where crashes keep happening close together
+  (county column on the table)
+- **Spatiotemporal growth** — among those clusters, which are getting worse
+  over time (Poisson rate-ratio primary; 1.5× heuristic exploratory)
+- **Getis-Ord Gi\*** — statistically significant hot/cold spots
+- **Empirical Bayes** — excess-crash ranking + tract choropleth by EB
+  percentile; SPF is statewide (population exposure), with county fixed
+  effects when the fit is stable
+
+Narrative / Hotspots tab keeps crash typing, contributing factors, severity
+risk models, and text mining — geographic hotspot maps are not duplicated there.
 
 ## Data notes
 
@@ -98,6 +120,7 @@ streamlit run app.py
   `LATITUDE`/`LONGITUDE` are required in `power_bi_export.csv` for the
   Florida crash-location map on the "When & Where" tab. `eda_analysis_combined.py`
   merges these in automatically.
+- Severity risk factors use `S4_CRASH_SEVERITY` from the export.
 - The demographics and meta files are optional — the dashboard degrades
   gracefully (skips the affected tabs/sections) if they're missing.
 
@@ -221,21 +244,31 @@ that balance isn't guaranteed to hold as more narratives get classified.)
 
 ### Explore spatiotemporal clustering for emerging hotspots
 
-**✅ First pass done, exploratory.** New section `09d` in
-`eda_analysis_combined.py` (DBSCAN per mode) finds spatial clusters, splits
-each into early- vs. late-period (median crash year for that mode), and
-flags clusters where the later period has >1.5× the earlier period's count
-as "emerging." Outputs `spatiotemporal_hotspots_by_mode.csv` and a map
-figure (`09d_emerging_hotspots_by_mode.png`) — this shows up under Tab 3
-("When & Where") in the "Pipeline figures" expander once the script has
-been run with `scikit-learn` installed.
+**✅ Done on the When & Where tab.** Pipeline section `09d` runs spatial
+DBSCAN per mode, splits each cluster at the median year (`SPLIT_YEAR`), and
+exports `spatiotemporal_hotspots_by_mode.csv`. The dashboard:
 
-**Caveats, please read before using in a deliverable:** `eps`/`min_samples`
-are a reasonable starting guess, not tuned; the early/late split is a
-coarse proxy for "emerging," not a validated space-time statistic. The
-standard tool if this needs to hold up formally is a space-time scan
-statistic (SaTScan / Getis-Ord Gi* on a space-time grid) — not
-implemented, flagged as a follow-up.
+- Overlays DBSCAN centers on Map 1 and shows a Top 10 table (with county)
+- Runs a **spatiotemporal growth explorer** where the **primary** label is
+  Poisson rate-ratio significance (p < 0.05); the 1.5× early→late rule is
+  exploratory only
+- Explains early vs late (years ≤ vs > `SPLIT_YEAR`) in-tab
+
+Static PNG `09d_emerging_hotspots_by_mode.png` is skipped when the
+interactive explorer is present.
+
+**Caveats:** `eps`/`min_samples` are exploratory; this is spatial DBSCAN +
+a period split, not a full space-time scan statistic (SaTScan). Getis-Ord
+Gi\* on tracts is available separately on the same tab for significance of
+spatial clustering at the tract level.
+
+### Empirical Bayes excess-crash ranking / tract map
+
+**✅ Done on When & Where.** Negative-binomial SPF with population exposure,
+trained on all Florida tracts for the selected mode; county fixed effects
+when the fit is stable (else statewide intercept-only). Table + choropleth
+colored by EB percentile; hover shows EB estimate, observed, predicted,
+excess, and population. Formula and column glossary are in the tab expander.
 
 ### Relative crash risk = crash frequency ÷ Strava cycling volume, by
 county (and tract)

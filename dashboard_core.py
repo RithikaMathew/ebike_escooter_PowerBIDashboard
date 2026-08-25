@@ -135,6 +135,365 @@ ATTRIBUTION_COLORS = {
     "Ambiguous / environmental": "#BDBDBD",
 }
 
+# Canonical infra display labels (use these instead of hard-coded strings in tabs).
+INFRA_SIDEWALK = INFRA_TYPE_LABELS["sidewalk"]
+INFRA_CROSSWALK = INFRA_TYPE_LABELS["crosswalk"]
+INFRA_BIKE_LANE = INFRA_TYPE_LABELS["bike_lane"]
+
+# Qwen narrative mode class <-> final S4 MODE (manual ground truth for mode validation).
+MODE_TO_QWEN_CLASS = {
+    "Bicycle": "Bicyclist",
+    "E-Bike": "E-bike",
+    "E-Scooter": "E-scooter",
+}
+QWEN_CLASS_CANONICAL = {
+    "bicyclist": "Bicyclist",
+    "e-bike": "E-bike",
+    "e-scooter": "E-scooter",
+    "other": "Other",
+}
+
+# Manual S4 CRASH_GROUP -> fault-party bucket (aligned with cause_attribution() labels).
+CRASH_GROUP_TO_FAULT_PARTY = {
+    "Motorist Failed to Yield - Sign-Controlled Intersection": "Driver-attributable",
+    "Motorist Failed to Yield - Midblock": "Driver-attributable",
+    "Motorist Failed to Yield - Signalized Intersection": "Driver-attributable",
+    "Motorist Left Turn/Merge": "Driver-attributable",
+    "Motorist Right Turn/Merge": "Driver-attributable",
+    "Motorist Overtaking Bicyclist": "Driver-attributable",
+    "Bicyclist Failed to Yield - Midblock": "Non-motorist-attributable",
+    "Bicyclist Failed to Yield - Sign-Controlled Intersection": "Non-motorist-attributable",
+    "Bicyclist Failed to Yield - Signalized Intersection": "Non-motorist-attributable",
+    "Bicyclist Left Turn/Merge": "Non-motorist-attributable",
+    "Bicyclist Right Turn/Merge": "Non-motorist-attributable",
+    "Bicyclist Overtaking Motorist": "Non-motorist-attributable",
+    "Crossing Paths - Other Circumstances": "Ambiguous / environmental",
+    "Parallel Paths - Other Circumstances": "Ambiguous / environmental",
+    "Loss of Control/Turning Error": "Ambiguous / environmental",
+    "Head-On": "Ambiguous / environmental",
+    "Backing Vehicle": "Ambiguous / environmental",
+    "Nonroadway": "Ambiguous / environmental",
+    "Other/Unusual Circumstances": "Ambiguous / environmental",
+    "Other/Unknown - Insufficient Details": "Ambiguous / environmental",
+}
+
+
+def normalize_qwen_class(val):
+    if pd.isna(val):
+        return None
+    return QWEN_CLASS_CANONICAL.get(str(val).strip().lower(), str(val).strip())
+
+
+def crash_group_fault_party(crash_group):
+    """Map manual CRASH_GROUP text to the same fault buckets as cause_attribution()."""
+    if pd.isna(crash_group):
+        return None
+    cg = str(crash_group).strip()
+    if cg in CRASH_GROUP_TO_FAULT_PARTY:
+        return CRASH_GROUP_TO_FAULT_PARTY[cg]
+    if cg.startswith("Motorist"):
+        return "Driver-attributable"
+    if cg.startswith("Bicyclist"):
+        return "Non-motorist-attributable"
+    return "Ambiguous / environmental"
+
+
+def driver_flag_rate(series):
+    """Share of True flags; tolerates bool or string/object columns."""
+    if series is None or len(series) == 0:
+        return np.nan
+    if series.dtype == bool:
+        return float(series.mean())
+    return float(
+        series.astype(str).str.strip().str.lower().isin(("true", "1", "yes", "t")).mean()
+    )
+
+
+def hotspot_rate_ratio_pvalue(n_early, n_late):
+    """Two-sample Poisson rate-ratio test (same logic as When & Where tab)."""
+    try:
+        from scipy import stats as scipy_stats
+    except ImportError:
+        return np.nan
+    n_total = int(n_early) + int(n_late)
+    if n_total == 0 or pd.isna(n_early) or pd.isna(n_late):
+        return np.nan
+    return float(scipy_stats.binomtest(int(n_late), n_total, 0.5, alternative="two-sided").pvalue)
+
+
+def add_hotspot_growth_significance(hs):
+    """Add GROWTH_PVAL / SIG_GROWTH columns when early/late counts are present."""
+    if hs is None or not len(hs):
+        return hs
+    if "N_EARLY_PERIOD" not in hs.columns or "N_LATE_PERIOD" not in hs.columns:
+        return hs
+    out = hs.copy()
+    pvals = out.apply(
+        lambda r: hotspot_rate_ratio_pvalue(r["N_EARLY_PERIOD"], r["N_LATE_PERIOD"]), axis=1
+    )
+    out["GROWTH_PVAL"] = pvals
+    out["SIG_GROWTH"] = out["GROWTH_PVAL"] < 0.05
+    return out
+
+
+def compute_qwen_validation_kappa(df, cause_df=None):
+    """
+    Cohen's kappa for Qwen mode labels vs manual reference.
+
+    CRASH_GROUP encodes crash geometry/fault, not micromobility mode, so mode
+    validation maps final S4 MODE through MODE_TO_QWEN_CLASS. When cause_df is
+    supplied, also returns fault kappa (CRASH_GROUP fault party vs ATTRIBUTION).
+    """
+    out = {"mode_kappa": None, "mode_n": 0, "fault_kappa": None, "fault_n": 0}
+    if df is None or "QWEN_CLASS" not in df.columns:
+        return out
+    qdf = df[df.get("IN_QWEN_NARRATIVES") == True].copy()  # noqa: E712
+    qdf = qdf[qdf["QWEN_CLASS"].notna() & qdf["MODE"].isin(MODE_TO_QWEN_CLASS)]
+    if len(qdf) < 10:
+        return out
+    try:
+        from sklearn.metrics import cohen_kappa_score
+    except ImportError:
+        return out
+    manual = qdf["MODE"].map(MODE_TO_QWEN_CLASS)
+    predicted = qdf["QWEN_CLASS"].map(normalize_qwen_class)
+    mask = manual.notna() & predicted.notna()
+    if mask.sum() >= 10:
+        out["mode_kappa"] = float(cohen_kappa_score(manual[mask], predicted[mask]))
+        out["mode_n"] = int(mask.sum())
+
+    if cause_df is not None and "primary_cause" in cause_df.columns and "CRASH_GROUP" in qdf.columns:
+        id_col = "REPORT_NUMBER" if "REPORT_NUMBER" in cause_df.columns else None
+        if id_col and id_col in qdf.columns:
+            attr = cause_df[[id_col, "primary_cause"]].drop_duplicates(id_col)
+            attr["ATTRIBUTION"] = attr["primary_cause"].apply(cause_attribution)
+            # Align merge key dtypes (export may be int64; causation CSV is str).
+            qdf_merge = qdf.copy()
+            qdf_merge[id_col] = qdf_merge[id_col].astype(str)
+            attr[id_col] = attr[id_col].astype(str)
+            merged = qdf_merge.merge(attr[[id_col, "ATTRIBUTION"]], on=id_col, how="inner")
+            merged = merged[merged["CRASH_GROUP"].notna() & merged["ATTRIBUTION"].notna()]
+            if len(merged) >= 10:
+                ref = merged["CRASH_GROUP"].map(crash_group_fault_party)
+                pred = merged["ATTRIBUTION"]
+                fmask = ref.notna() & pred.notna()
+                if fmask.sum() >= 10:
+                    out["fault_kappa"] = float(cohen_kappa_score(ref[fmask], pred[fmask]))
+                    out["fault_n"] = int(fmask.sum())
+    return out
+
+
+def _build_tract_weights(tracts_gdf):
+    import libpysal
+    import warnings as _warnings
+
+    with _warnings.catch_warnings():
+        _warnings.filterwarnings("ignore", message=".*not fully connected.*")
+        _warnings.filterwarnings("ignore", message=".*disconnected.*")
+        w = libpysal.weights.Queen.from_dataframe(
+            tracts_gdf[["GEOID", "geometry"]], use_index=True, silence_warnings=True,
+        )
+        w = libpysal.weights.fill_diagonal(w, 1.0)
+    w.silence_warnings = True
+    w.transform = "r"
+    return w
+
+
+NARRATIVE_REPORT_STOPWORDS = frozenset({
+    "v1", "v01", "v2", "v02", "nm1", "nm01", "nm2", "nm02", "d1", "d01", "d2", "d02",
+    "p1", "p01", "p2", "p02", "p3", "p03", "scooter", "vehicle", "veh", "unit",
+    "id", "number", "rank", "name", "troop", "post", "officer", "agency", "phone",
+    "date", "created", "tpr", "dep", "fhp", "florida", "highway", "patrol", "sheriff",
+    "report", "crash", "stated", "traveling", "northbound", "southbound", "eastbound",
+    "westbound", "lane", "road", "street", "avenue", "boulevard", "intersection", "sr",
+    "state", "county", "mile", "marker", "block", "approaching", "turning", "stopped",
+    "driver", "non", "motorist", "person", "witness", "operator", "pedestrian",
+})
+
+
+def narrative_text_for_search(text):
+    """Strip officer/report header boilerplate before keyword matching."""
+    if pd.isna(text):
+        return ""
+    t = str(text)
+    # FHP-style header: dashed rule, id number / officer fields, date created, badge block
+    header_end = re.search(
+        r"^(?:-+\s*)?id number\s*\n.*?date created\s*\n\d+.*?"
+        r"(?=\n(?:vehicle|v0|non[- ]?motorist|pedestrian|bicycle|the |driver|person|witness|nm0|p0|scooter|e-bike|cyclist))",
+        t,
+        flags=re.IGNORECASE | re.DOTALL,
+    )
+    if header_end:
+        t = t[header_end.end():]
+    t = re.sub(r"officer agency phone number date created\s*\d+", " ", t, flags=re.IGNORECASE)
+    kept = []
+    for line in t.splitlines():
+        low = line.lower()
+        if "officer agency phone" in low or "phone number date created" in low:
+            continue
+        if re.match(r"^\s*-+\s*id number\s*$", low):
+            continue
+        kept.append(line)
+    return " ".join(kept).strip()
+
+
+def lda_stopword_list():
+    """English stopwords plus crash-report administrative tokens."""
+    try:
+        from sklearn.feature_extraction.text import ENGLISH_STOP_WORDS
+        base = set(ENGLISH_STOP_WORDS)
+    except ImportError:
+        base = set()
+    return list(base | NARRATIVE_REPORT_STOPWORDS)
+
+
+def reconcile_cause_modes(cause_df, main_df):
+    """
+    Recover causation rows stuck in MODE='Other' when the main export has a
+    known Bicycle/E-Bike/E-Scooter mode for the same REPORT_NUMBER.
+    """
+    if cause_df is None or main_df is None or "MODE" not in cause_df.columns:
+        return cause_df
+    id_col = "REPORT_NUMBER" if "REPORT_NUMBER" in cause_df.columns else None
+    main_id = find_col(main_df, CRASH_ID_CANDIDATES) or id_col
+    if not id_col or not main_id or main_id not in main_df.columns:
+        return cause_df
+    out = cause_df.copy()
+    out[id_col] = out[id_col].astype(str)
+    mode_lookup = (
+        main_df[[main_id, "MODE"]]
+        .dropna(subset=["MODE"])
+        .drop_duplicates(main_id)
+        .assign(**{main_id: lambda d: d[main_id].astype(str)})
+        .set_index(main_id)["MODE"]
+    )
+    recover_mask = out["MODE"] == "Other"
+    mapped_modes = out.loc[recover_mask, id_col].map(mode_lookup)
+    can_recover = mapped_modes.isin(MODES)
+    out.loc[mapped_modes[can_recover].index, "MODE"] = mapped_modes[can_recover]
+    return out
+
+
+MORAN_QUADRANT_LABELS = {
+    1: "High-High (cluster)",
+    2: "Low-High (outlier)",
+    3: "Low-Low (cluster)",
+    4: "High-Low (outlier)",
+}
+
+
+def spatial_cluster_stats_for_mode(tract_geo, mode):
+    """
+    Getis-Ord Gi* + Local Moran's I for one mode on a pre-built tract_geo.
+
+    Shared by When & Where Map 4 and Insights Section 10. Rebuilds Queen weights
+    on each call — esda's G_Local mutates the weights object, so reusing it across
+    modes in a loop corrupts later Gi* counts.
+    """
+    import warnings as _warnings
+    from esda.getisord import G_Local
+    from esda.moran import Moran_Local
+
+    if mode not in tract_geo.columns:
+        return None
+    weights = _build_tract_weights(tract_geo)
+    y = tract_geo[mode].fillna(0).values.astype(float)
+    with _warnings.catch_warnings():
+        _warnings.simplefilter("ignore")
+        gi = G_Local(y, weights, star=None, permutations=999, seed=0, n_jobs=1)
+        lm = Moran_Local(y, weights, permutations=999, seed=0, n_jobs=1)
+
+    gi_buckets = []
+    for z, p in zip(gi.Zs, gi.p_sim):
+        if pd.isna(p) or p > 0.10:
+            gi_buckets.append("Not significant")
+        else:
+            conf = "99%" if p <= 0.01 else ("95%" if p <= 0.05 else "90%")
+            gi_buckets.append(
+                f"Hot spot ({conf} confidence)" if z > 0 else f"Cold spot ({conf} confidence)"
+            )
+
+    moran_q = [
+        MORAN_QUADRANT_LABELS.get(q, "n/a") if p <= 0.05 else "Not significant"
+        for q, p in zip(lm.q, lm.p_sim)
+    ]
+    return {
+        "n_hot_spots": int(sum(b.startswith("Hot spot") for b in gi_buckets)),
+        "n_cold_spots": int(sum(b.startswith("Cold spot") for b in gi_buckets)),
+        "n_high_low_outliers": int(sum(q == "High-Low (outlier)" for q in moran_q)),
+        "n_tracts": int(len(tract_geo)),
+        "gi_buckets": gi_buckets,
+        "moran_q": moran_q,
+        "gi_z": gi.Zs,
+        "gi_p": gi.p_sim,
+    }
+
+
+def build_tract_geo_from_crashes(tracts_gdf, df, lat_col, lon_col):
+    """Point-in-polygon join of filtered crashes → per-tract mode counts."""
+    if tracts_gdf is None or df is None or not lat_col or not lon_col:
+        return None
+    if not GEOPANDAS_AVAILABLE or "GEOID" not in tracts_gdf.columns:
+        return None
+
+    geo_pts = df[[lat_col, lon_col, "MODE"]].copy()
+    geo_pts[lat_col] = pd.to_numeric(geo_pts[lat_col], errors="coerce")
+    geo_pts[lon_col] = pd.to_numeric(geo_pts[lon_col], errors="coerce")
+    geo_pts = geo_pts[
+        geo_pts[lat_col].between(24, 31) & geo_pts[lon_col].between(-88, -79)
+    ]
+    if len(geo_pts) == 0:
+        return None
+
+    pts_gdf = gpd.GeoDataFrame(
+        geo_pts,
+        geometry=gpd.points_from_xy(geo_pts[lon_col], geo_pts[lat_col]),
+        crs=4326,
+    )
+    joined = gpd.sjoin(
+        pts_gdf, tracts_gdf[["GEOID", "geometry"]], how="left", predicate="within",
+    ).dropna(subset=["GEOID"])
+    if len(joined) == 0:
+        return None
+
+    tract_counts = (
+        joined.groupby(["GEOID", "MODE"], observed=True)
+        .size()
+        .unstack(fill_value=0)
+        .reindex(columns=MODES, fill_value=0)
+    )
+    tract_geo = tracts_gdf.merge(tract_counts.reset_index(), on="GEOID", how="left")
+    for m in MODES:
+        tract_geo[m] = tract_geo[m].fillna(0)
+    return tract_geo
+
+
+def compute_gi_star_summary(tracts_gdf, df, lat_col, lon_col, modes):
+    """
+    Getis-Ord Gi* + Local Moran's I tract counts for the filtered crash df.
+    Returns {mode: {n_hot_spots, n_cold_spots, n_high_low_outliers, n_tracts}} or {}.
+    """
+    out = {}
+    try:
+        from esda.getisord import G_Local  # noqa: F401
+        from esda.moran import Moran_Local  # noqa: F401
+    except ImportError:
+        return out
+
+    tract_geo = build_tract_geo_from_crashes(tracts_gdf, df, lat_col, lon_col)
+    if tract_geo is None:
+        return out
+
+    for mode in modes:
+        if mode not in MODES:
+            continue
+        stats = spatial_cluster_stats_for_mode(tract_geo, mode)
+        if stats:
+            out[mode] = {k: stats[k] for k in (
+                "n_hot_spots", "n_cold_spots", "n_high_low_outliers", "n_tracts",
+            )}
+    return out
+
 
 def find_col(df, candidates):
     """Return the first matching column name (case-insensitive), or None."""
@@ -549,6 +908,8 @@ meta_raw = load_meta(meta_src, _mtime=_mtime_key(meta_src)) if meta_src is not N
 narrative_raw = load_narratives(narrative_src, _mtime=_mtime_key(narrative_src)) if narrative_src is not None else None
 hotspot_raw = load_hotspots(hotspot_src, _mtime=_mtime_key(hotspot_src)) if hotspot_src is not None else None
 cause_raw = load_cause_data(cause_src, _mtime=_mtime_key(cause_src)) if cause_src is not None else None
+if cause_raw is not None:
+    cause_raw = reconcile_cause_modes(cause_raw, df_raw)
 tracts_raw = load_tracts(tract_src, _mtime=_mtime_key(tract_src)) if tract_src is not None else None
 
 MAIN_CRASH_ID_COL = find_col(df_raw, CRASH_ID_CANDIDATES)
@@ -631,24 +992,59 @@ def _load_pipeline_figures(fig_dir):
 
 # Filenames (no extension) that now have a matching interactive chart built
 # from power_bi_export.csv, so the static PNG fallback should skip them.
+# Also skip figures that land on the wrong tab (e.g. speed violin under When &
+# Where) when the interactive lives elsewhere.
 PIPELINE_FIGURES_WITH_INTERACTIVE_EQUIVALENT = {
-    "06a_crash_group_distribution",   # Crash Typing chart (CRASH_GROUP), tab7
-    "06b_crash_type_descriptions",    # Crash Type Description chart (CRASH_TYPE_DESC), tab7
-    "06d_contributing_factors",       # Contributing Factors chart (ROAD_/ENVIRONMENT_CIRCUMSTANCE), tab7
-    "10b_distraction_type_by_mode",   # Driver Distraction Type chart (DISTRACTION_TYPE), tab4
+    # Overview (tab1)
+    "01a_mode_distribution",
+    "01c_annual_trend",
+    # Demographics (tab6)
+    "02a_age_violin",
+    "02c_gender_by_mode",
+    "02d_age_band_by_mode",
+    # When & Where (tab3)
+    "03a_day_night_by_mode",
+    "03b_hour_heatmap",
+    "03b2_hour_pct_within_mode",
+    "03c_day_of_week",
+    "03d_monthly_pattern",
+    "04a_intersection_segment",
+    "04b_speed_limit_violin",          # interactive on Roadway Infrastructure
+    "04c_road_type",                   # interactive on Roadway Infrastructure
+    "04d_top_counties_stacked",
+    "04e_light_conditions",
+    "04f_weather_conditions",
+    "09c_crash_scatter_florida",
+    "09d_emerging_hotspots_by_mode",   # interactive growth explorer on When & Where
+    # Severity (tab2)
+    "05a_severity_stacked_bar",
+    "05b_fatality_incap_rates",
+    "05c_severity_year_trend",
+    "05d_severity_year_trend_counts",
+    # Narrative / typing (tab7)
+    "06a_crash_group_distribution",
+    "06b_crash_type_descriptions",
+    "06d_contributing_factors",
+    "07a_narrative_mode_pie",
+    "08f_micromobility_speed_violin",  # interactive on Roadway Infrastructure
+    # Driver behavior / citations (tab4)
+    "10a_driver_flags_by_mode",
+    "10b_distraction_type_by_mode",
+    "11a_citation_rate_by_mode",
+    "11c_citation_rate_over_time_by_mode",
+    # Roadway infrastructure (tab5)
+    "13a_aadt_by_mode",
+    "13c_shoulder_width_by_mode",
+    "13d_lane_count_by_mode",
+    "13e_intersection_control_by_mode",
 }
 
 PIPELINE_FIGURES = _load_pipeline_figures(_find_figures_dir())
 
-# Which results/figures/<subfolder> feeds which tab -- every subfolder
-# eda_analysis_combined.py writes (01 through 13) is mapped somewhere so
-# nothing in the results folder gets silently dropped. 12_pedestrian_context
-# is explicitly "reference only" in the pipeline (pedestrian crashes stay
-# classified as "Other", outside this dashboard's active-mode scope), so it
-# lives on the About tab alongside the classification-methodology figures
-# rather than implying it's part of the Bicycle/E-Bike/E-Scooter totals.
+# Which results/figures/<subfolder> feeds which tab. Pedestrian context
+# (12_*) is out of active-mode scope and is not shown. Folders whose PNGs
+# all have interactive equivalents simply produce no expander.
 PIPELINE_FIGURE_MAP = {
-    "tab0": ["12_pedestrian_context"],
     "tab1": ["01_overview"],
     "tab2": ["05_severity"],
     "tab3": ["03_when", "04_where", "09_latlon"],

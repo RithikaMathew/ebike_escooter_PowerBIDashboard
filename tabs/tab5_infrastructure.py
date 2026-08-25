@@ -23,7 +23,7 @@ with c1:
             color_discrete_map=MODE_COLORS, category_orders={"MODE": MODES},
         )
         fig.update_layout(yaxis_title="Average Annual Daily Traffic", xaxis_title=None, showlegend=False)
-        st.plotly_chart(style_fig(fig, title="Traffic Volume (AADT) by Mode"), width="stretch")
+        st.plotly_chart(style_fig(fig, title="Traffic Volume (AADT) by Mode", n=len(aadt_df)), width="stretch")
     else:
         st.info("No AADT data in the current filter selection.")
 
@@ -37,8 +37,13 @@ with c2:
             color_discrete_map=MODE_COLORS, category_orders={"MODE": MODES},
         )
         fig.update_layout(yaxis_title=None, xaxis_title="% of that mode's crashes (with intersection-control data)",
-                           yaxis={"categoryorder": "total ascending"})
-        st.plotly_chart(style_fig(fig, title="Intersection Control Type by Mode (% Within Mode)"), width="stretch")
+                           yaxis={"categoryorder": "total ascending"},
+                           legend=dict(orientation="h", yanchor="bottom", y=1.12, x=0),
+                           margin=dict(t=80))
+        st.plotly_chart(
+            style_fig(fig, title="Intersection Control Type by Mode (% Within Mode)", n=len(ictrl_df), height=420),
+            width="stretch",
+        )
     else:
         st.info("No intersection-control data in the current filter selection.")
 
@@ -51,7 +56,7 @@ if SPEED_COL:
             color_discrete_map=MODE_COLORS, category_orders={"MODE": MODES},
         )
         fig.update_layout(yaxis_title="Posted Speed Limit (mph)", xaxis_title=None, showlegend=False)
-        st.plotly_chart(style_fig(fig, title="Posted Speed Limit Distribution by Mode"), width="stretch")
+        st.plotly_chart(style_fig(fig, title="Posted Speed Limit Distribution by Mode", n=len(spd_df)), width="stretch")
     else:
         st.info("No Posted Speed Limit data in the current filter selection.")
 
@@ -65,7 +70,7 @@ if MICRO_SPEED_COL:
         )
         fig.update_layout(yaxis_title="Self-Reported Speed (mph)", xaxis_title=None, showlegend=False)
         st.plotly_chart(
-            style_fig(fig, title=f"Micromobility Speed From Crash Narratives by Mode (n={len(mspd_df):,})"),
+            style_fig(fig, title="Micromobility Speed From Crash Narratives by Mode", n=len(mspd_df)),
             width="stretch",
         )
         st.caption(
@@ -197,7 +202,15 @@ else:
                     groups = [spd9.loc[spd9["INFRA_LABEL"] == g, MICRO_SPEED_COL] for g in order if infra_speed_n.get(g, 0) >= 5]
                     if len(groups) >= 2:
                         h_stat, p_val9 = _stats9.kruskal(*groups)
-                        st.caption(f"Kruskal-Wallis across infrastructure types: H = {h_stat:.2f}, p = {p_val9:.3f}.")
+                        st.caption(
+                            f"Kruskal-Wallis across infrastructure types: H = {h_stat:.2f}, "
+                            f"p = {p_val9:.3f}. This non-parametric test asks whether the "
+                            f"*distributions* of self-reported crash speed differ across "
+                            f"infrastructure types (it does not assume normality). A small p "
+                            f"(e.g. < 0.05) means at least one infrastructure type has a "
+                            f"different speed distribution than the others — not that every "
+                            f"pair differs, and not which type is highest (see the chart)."
+                        )
                 except ImportError:
                     pass
         else:
@@ -231,13 +244,13 @@ if infra_cols_present:
                     )
                     fig.update_layout(yaxis_title=None, xaxis_title="Crashes",
                                        yaxis={"categoryorder": "total ascending"})
-                st.plotly_chart(style_fig(fig, title=f"{col_label} by Mode"), width="stretch")
+                st.plotly_chart(style_fig(fig, title=f"{col_label} by Mode", n=len(sub)), width="stretch")
 
 road_type_df = df[df[ROAD_TYPE_COL].notna()] if ROAD_TYPE_COL else pd.DataFrame()
 if len(road_type_df):
     st.caption(
-        "Road Type reflects the raw FDOT `TRAFFICWAY_CODE` -- the "
-        "pipeline doesn't currently map these codes to readable labels."
+        "Road Type uses the FDOT trafficway classification (`TRAFFICWAY_CODE` / "
+        f"`{ROAD_TYPE_COL}`) as labeled in the export."
     )
     rt = road_type_df.groupby([ROAD_TYPE_COL, "MODE"], observed=True).size().reset_index(name="count")
     rt_mode_totals = road_type_df.groupby("MODE", observed=True).size()
@@ -248,8 +261,10 @@ if len(road_type_df):
     )
     fig.update_layout(yaxis_title="Trafficway Code", xaxis_title="% of that mode's crashes",
                        yaxis={"categoryorder": "total ascending"})
-    st.plotly_chart(style_fig(fig, title="Road Type (Trafficway Code) by Mode (% Within Mode)"), width="stretch")
-
+    st.plotly_chart(
+        style_fig(fig, title="Road Type (Trafficway Code) by Mode (% Within Mode)", n=len(road_type_df)),
+        width="stretch",
+    )
 
 render_pipeline_figures("tab5")
 

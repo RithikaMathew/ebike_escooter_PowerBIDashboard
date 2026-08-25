@@ -136,7 +136,7 @@ if meta_raw is not None:
         fig = go.Figure(go.Funnel(
             y=labels, x=values, marker=dict(color="#2b3f8c"),
         ))
-        st.plotly_chart(style_fig(fig, title="Records Retained at Each Pipeline Step", height=340), width="stretch")
+        st.plotly_chart(style_fig(fig, title="Records Retained at Each Pipeline Step", height=340, n=int(values[-1]) if values else None), width="stretch")
     else:
         st.dataframe(meta_raw, width="stretch", hide_index=True)
 

@@ -49,7 +49,7 @@ with c2:
         color_discrete_map=MODE_COLORS, category_orders={"MODE": MODES},
     )
     fig2.update_layout(yaxis_title="% cited", xaxis_title=None)
-    st.plotly_chart(style_fig(fig2, title="Citation Rate Over Time, by Mode", height=280), width="stretch")
+    st.plotly_chart(style_fig(fig2, title="Citation Rate Over Time, by Mode", height=280, n=total), width="stretch")
     st.caption(
         "A declining rate here can reflect changing enforcement/charging practice, more "
         "crashes being self-reported without an officer response, or a reporting-lag "
@@ -77,7 +77,11 @@ if "DISTRACTION_TYPE" in df.columns and df["DISTRACTION_TYPE"].notna().any():
             yaxis={"categoryorder": "total ascending"}, barmode="stack",
         )
         st.plotly_chart(
-            style_fig(fig, title=f"Driver Distraction Type (top {dist_top_n}, by mode, excl. 'Not Distracted')", height=440),
+            style_fig(
+                fig,
+                title=f"Driver Distraction Type (top {dist_top_n}, by mode, excl. 'Not Distracted')",
+                height=440, n=len(dsub2),
+            ),
             width="stretch",
         )
         st.caption(
