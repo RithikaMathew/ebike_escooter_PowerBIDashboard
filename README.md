@@ -1,366 +1,148 @@
 # Active-Mode Crash Dashboard
 
-Interactive Streamlit dashboard for exploring bicycle, e-bike, and e-scooter
-("active-mode") crashes in Florida, built on Signal4 crash tables and FDOT
-roadway data.
+Interactive Streamlit dashboard for exploring bicycle, e-bike, and e-scooter ("active-mode") crashes in Florida, built on Signal4 crash tables and FDOT roadway data.
 
-Just & Green Transportation Lab, University of Florida.
+**Just & Green Transportation Lab, University of Florida.**
+
+Live deployment: https://ebikeescooterpowerbidashboard-dpdpqduho5p45wyrmpenmq.streamlit.app/
+
+---
+
+## Repository Structure
+
+```
+.
+├── app.py                                              # Streamlit entry point
+├── dashboard.py                                        # Delegates to app.py
+├── dashboard_core.py                                   # Core dashboard logic
+├── dashboard_meta.csv                                  # Pipeline funnel counts
+├── classify_crash_cause.py                             # Crash cause classification
+├── build_census_tracts.py                              # Builds census tract GeoJSON
+├── eda_analysis_combined_BicycleSeparate (2).py        # Main EDA pipeline
+├── power_bi_export.csv                                 # Crash-level export
+├── power_bi_export_demographics.csv                    # Person-level demographics export
+├── spatiotemporal_hotspots_by_mode.csv                 # DBSCAN cluster output
+├── cause_analysis_export.csv                           # Crash cause analysis output
+├── narrative_text_export.csv                           # Raw narrative text
+├── census_tracts.geojson                               # Florida census tract polygons
+├── requirements.txt
+├── tabs/
+│   ├── tab0_about.py
+│   ├── tab1_overview.py
+│   ├── tab2_severity.py
+│   ├── tab3_when_where.py
+│   ├── tab4_driver_behavior.py
+│   ├── tab5_infrastructure.py
+│   ├── tab6_demographics.py
+│   ├── tab7_narrative.py
+│   ├── tab8_causation.py
+│   └── tab9_insights.py
+├── results/figures/                                    # Static PNGs from EDA pipeline
+└── combinedSignal4/                                    # Raw Signal4 crash tables
+```
+
+---
 
 ## Pipeline
 
 The dashboard reads from CSVs produced by a multi-stage pipeline. Run in order:
 
-1. **`classify_emobility.py`** *(run separately, on HiPerGator)* — classifies
-   crash narratives into Bicycle / E-Bike / E-Scooter / Other using
-   Qwen2.5-72B served via vLLM. Produces the narrative-label output the next
-   step consumes.
-2. **`eda_analysis_combined.py`** (in-repo copy may be named
-   `eda_analysis_combined_BicycleSeparate (2).py`) — the main EDA pipeline.
-   Merges crash_event, non_motorist, and vehicle tables with the narrative
-   labels and FDOT roadway data, and writes:
-   - `power_bi_export.csv` — crash-level export (mode, timing, location,
-     severity, driver-behavior flags, citations, roadway infra, road type,
-     posted speed, lat/lon)
+1. **`classify_crash_cause.py`** *(run separately, on HiPerGator)* — classifies crash narratives into Bicycle / E-Bike / E-Scooter / Other using Qwen2.5-72B served via vLLM. Produces the narrative-label output consumed by the next step.
+
+2. **`eda_analysis_combined_BicycleSeparate (2).py`** — the main EDA pipeline. Merges crash_event, non_motorist, and vehicle tables with narrative labels and FDOT roadway data, and writes:
+   - `power_bi_export.csv` — crash-level export (mode, timing, location, severity, driver-behavior flags, citations, roadway infra, road type, posted speed, lat/lon)
    - `power_bi_export_demographics.csv` — person-level age/gender export
-   - `dashboard_meta.csv` — pipeline funnel counts (raw → geocoded →
-     matched → final)
+   - `dashboard_meta.csv` — pipeline funnel counts (raw → geocoded → matched → final)
    - `spatiotemporal_hotspots_by_mode.csv` — DBSCAN clusters + early/late growth
-   - `results/figures/` — static PNGs by section (shown only when there is
-     **no** interactive Plotly equivalent on that tab)
+   - `results/figures/` — static PNGs by section
+
 3. **`app.py`** — Streamlit entry point (`dashboard.py` delegates here).
 
-**Pipeline PNG expanders** at the bottom of a tab only list figures that are
-*not* already covered by a live chart. Pedestrian-context PNGs are omitted
-(outside active-mode scope). If a new pipeline figure never appears, either
-re-run the EDA script or confirm it isn’t already skipped as an interactive
-duplicate.
+---
 
 ## Setup
 
-### On HiPerGator (how this is actually being run right now)
+### On HiPerGator
 
-There's no dedicated conda/venv for this project yet — the working setup is
-the **`pytorch` module's Python**, which already has pandas / numpy /
-matplotlib / seaborn / scikit-learn / openpyxl installed for this user. Every
-new login session, before running anything:
+The working setup uses the **`pytorch` module's Python**, which has pandas / numpy / matplotlib / seaborn / scikit-learn / openpyxl pre-installed. Every new login session, run:
 
 ```bash
 module load pytorch/2.8.0
 cd /blue/xiangyan/rithika/stats
 ```
 
-then run the pipeline / dashboard as normal, e.g.:
+Then run the pipeline as normal:
 
 ```bash
-python3 eda_analysis_combined.py
+python3 "eda_analysis_combined_BicycleSeparate (2).py"
 ```
 
-Notes:
-- `module load` only lasts for the current shell session — you need to run
-  it again after logging back in. It is **not** remembered by a `.sbatch`
-  batch job either; add `module load pytorch/2.8.0` as a line inside any
-  `.sbatch` script before the `python3` call, or the job will fail with
-  `ModuleNotFoundError: No module named 'pandas'` even though it works fine
-  interactively.
-- Verify you're pointed at the right interpreter with `which python3` /
-  `python3 --version` — it should resolve to
-  `/apps/pytorch/2.8.0/bin/python3`, version `3.13.x`. Plain `python3` with
-  no module loaded falls back to the OS's bare `/usr/bin/python3` (3.9),
-  which has none of these packages and will fail immediately on `import
-  pandas`.
-- A cleaner long-term option is a dedicated conda env (`conda create -n
-  stats ...`) or venv scoped to this project instead of riding on the
-  pytorch module — not set up yet; flagged as a nice-to-have, not blocking
-  anything currently.
+> **Note:** `module load` only lasts for the current shell session. Add `module load pytorch/2.8.0` inside any `.sbatch` script before the `python3` call.
 
-### Running the dashboard locally (off HiPerGator, e.g. on a laptop)
+### Locally (laptop)
 
 ```bash
 python3 -m venv venv
 source venv/bin/activate       # Windows: venv\Scripts\activate
-pip3 install -r requirements.txt
+pip install -r requirements.txt
 ```
 
-`requirements.txt` includes Streamlit/Plotly plus spatial and EB deps:
-`geopandas`, `shapely`, `libpysal`, `esda`, `statsmodels`, `scipy`,
-`scikit-learn`.
+`requirements.txt` includes Streamlit, Plotly, and spatial dependencies: `geopandas`, `shapely`, `libpysal`, `esda`, `statsmodels`, `scipy`, `scikit-learn`.
 
-## Running locally
+---
 
-Place `power_bi_export.csv`, `power_bi_export_demographics.csv`,
-`dashboard_meta.csv`, `spatiotemporal_hotspots_by_mode.csv` (optional),
-`census_tracts.geojson` (optional), and the `results/figures/` folder next
-to `app.py` (or upload them via the sidebar), then:
+## Running the Dashboard
+
+Place the following files next to `app.py` (or upload them via the sidebar):
+
+- `power_bi_export.csv` *(required)*
+- `power_bi_export_demographics.csv` *(optional)*
+- `dashboard_meta.csv` *(optional)*
+- `spatiotemporal_hotspots_by_mode.csv` *(optional)*
+- `census_tracts.geojson` *(optional, for tract maps)*
+- `results/figures/` folder *(optional, for static PNG expanders)*
+
+Then:
 
 ```bash
 streamlit run app.py
 ```
 
-## When & Where tab (maps & hotspots)
+The dashboard degrades gracefully — tabs and sections that depend on missing optional files are skipped automatically.
 
-- **Map 1** — raw crash counts per census tract, selectable by mode (or all)
-- **Map 2** — crashes per 100,000 residents (percentile-colored; rate formula
-  explained in-tab)
+---
+
+## Dashboard Tabs
+
+| Tab | Description |
+|---|---|
+| **About** | Project overview and data source documentation |
+| **Overview** | High-level crash counts and mode breakdown |
+| **Severity** | Injury severity distributions and trends over time |
+| **When & Where** | Temporal patterns, crash maps, hotspot analysis |
+| **Driver Behavior** | Driver behavior flags and contributing factor rates |
+| **Infrastructure** | Roadway type, intersection control, lighting conditions |
+| **Demographics** | Rider age and gender distributions |
+| **Narrative** | Crash narrative text mining and contributing factors |
+| **Causation** | Crash cause classification and model outputs |
+| **Insights** | Integrated findings and cross-tab analysis |
+
+### When & Where tab — map and hotspot layers
+
+- **Map 1** — raw crash counts per census tract, selectable by mode
+- **Map 2** — crashes per 100,000 residents (percentile-colored)
 - **Map 3** — mode share of micromobility crashes per tract
-- **DBSCAN overlay / Top 10** — where crashes keep happening close together
-  (county column on the table)
-- **Spatiotemporal growth** — among those clusters, which are getting worse
-  over time (Poisson rate-ratio primary; 1.5× heuristic exploratory)
+- **DBSCAN overlay / Top 10** — recurring spatial crash clusters, with county
+- **Spatiotemporal growth** — clusters trending worse over time (Poisson rate-ratio primary; 1.5× heuristic exploratory)
 - **Getis-Ord Gi\*** — statistically significant hot/cold spots
-- **Empirical Bayes** — excess-crash ranking + tract choropleth by EB
-  percentile; SPF is statewide (population exposure), with county fixed
-  effects when the fit is stable
-
-Narrative / Hotspots tab keeps crash typing, contributing factors, severity
-risk models, and text mining — geographic hotspot maps are not duplicated there.
-
-## Data notes
-
-- `S4_LATITUDE`/`S4_LONGITUDE` (preferred, ~98.5% complete) or the raw
-  `LATITUDE`/`LONGITUDE` are required in `power_bi_export.csv` for the
-  Florida crash-location map on the "When & Where" tab. `eda_analysis_combined.py`
-  merges these in automatically.
-- Severity risk factors use `S4_CRASH_SEVERITY` from the export.
-- The demographics and meta files are optional — the dashboard degrades
-  gracefully (skips the affected tabs/sections) if they're missing.
-
-## Deployment
-
-https://ebikeescooterpowerbidashboard-dpdpqduho5p45wyrmpenmq.streamlit.app/
+- **Empirical Bayes** — excess-crash ranking + tract choropleth; SPF is statewide (population exposure) with county fixed effects when the fit is stable
 
 ---
 
-## FAQ / Analysis Brief — Status of Each Question
+## Data Notes
 
-This section works through the questions raised on the analysis, in order,
-with what's done, what's still open, and why. ✅ = done · 🟡 = partial /
-needs input from the team · ⛔ = pending, blocked on something outside the
-code.
-
-### For most analyses, break out a) all crashes, b) KSI, c) fatalities
-
-- **Dashboard: ✅ Done.** Sidebar → Injury Severity filter now has three
-  quick-preset buttons — **All / KSI / Fatal** — above the checkbox list.
-  Clicking one filters *every* tab at once (Severity, When/Where, Driver
-  Behavior, Citations, Roadway Infrastructure, Demographics), since nearly
-  every chart reads off the same filtered dataframe. This is the
-  recommended way to explore the split — it's live, not three static
-  copies of every chart.
-- **`eda_analysis_combined.py` (static PNGs): 🟡 Partial.** `is_ksi()` /
-  `is_fatal()` helpers exist and are applied to Citation Rate by Mode and
-  Driver Behavior Flags by Mode (each now also has `_ksi` and `_fatal`
-  CSV/print output). Not yet extended to every other static figure (Road
-  Type, Light/Weather, Age, Day/Night, spatial/county trend, hour-of-day) —
-  tell us which ones matter most for the writeup and we'll extend the
-  pattern; it's mechanical once the helper exists.
-
-### Trend analysis (spatial & temporal): use all micromobility, not just
-"Bicycle"
-
-**✅ Already correct by design.** Spatial/temporal trend charts in both
-files are built from `ACTIVE_MODES`/`micro_df` (all micromobility — Bicycle
-+ E-Bike + E-Scooter, where "Bicycle" here includes both Qwen-labeled and
-structurally-classified bicycle crashes). The narrower Qwen-only "Bicycle"
-label is used only in the mode-vs-mode comparison charts, per the brief.
-
-### Data processing steps & limitations need to be described carefully
-
-**🟡 Partial — drafted, one date still needs confirming.** FLHSMV/Signal4
-first applied keyword search to statewide crash-narrative text to pull a
-candidate pool of e-bike/e-scooter crashes, **covering January 1, 2014
-through 2026**, plus a comparison sample of ~5,000 narratives that did NOT
-match those keywords. Candidates were then classified by the Qwen
-multilabel model (`multilabel_ebike.xlsx` / `multilabel_RegBike.xlsx`) into
-Bicycle / E-Bike / E-Scooter / Other. Two limitations that follow directly
-and should be repeated wherever E-Bike/E-Scooter totals are quoted:
-1. Keyword extraction is precision-oriented, not a random sample — a crash
-   whose narrative never mentions an e-bike/e-scooter term is never in the
-   candidate pool, so absolute E-Bike/E-Scooter counts are a **floor**, not
-   a census.
-2. "Bicycle" from this pipeline is a **subset** of all bicycle crashes in
-   Signal4 — see the trend-analysis item above.
-
-**⛔ Still open:** whether the 2026 end of the range is end-of-June 2026 or
-a later cutoff — confirm with FLHSMV/Xingjing before stating a specific end
-date in a final report.
-
-### Why does E-Bike crash timing cluster at 3–4pm?
-
-**🟡 Diagnostic added, not a definitive answer.** The hourly chart now
-prints each mode's share of crashes at its peak hour, so you can tell
-whether 3–4pm is a *shared* PM-commute/school-dismissal peak across all
-three modes, or E-Bike-specific. `eda_analysis_combined.py` also adds a
-`%`-within-mode hourly-shape chart with the 3–4pm window shaded. Actually
-answering "why" needs a follow-up cross-tab (E-Bike crashes at 3–4pm ×
-rider age band × school-day vs. weekend) — not built yet.
-
-### Higher fatal/serious-injury and citation rates for "Bicycle" — is that
-right?
-
-**⛔ Not a code fix — a real analytic observation to sanity-check.** One
-confound worth checking before writing this up: Bicycle is a much larger,
-more heterogeneous sample than E-Bike/E-Scooter (which come only from the
-narrower Qwen-labeled pool), so its rates sit on more stable statistical
-footing — E-Bike/E-Scooter rates could still shift meaningfully as more
-narratives get classified. No confidence intervals are on the rate charts
-yet; can be added on request so "higher" is backed by an interval, not just
-a point estimate.
-
-### "Severity mix over time" should use proportions
-
-**✅ Done, both files.** `eda_analysis_combined.py`: `05c` is now a %
-stacked chart (old raw-count version kept as `05d` so volume growth is
-still visible separately). Dashboard: "Severity Mix Over Time" now plots %
-of that year's crashes instead of raw stacked counts.
-
-### What's the Day vs. Night definition?
-
-**⛔ Pending — needs FLHSMV/Signal4 to confirm.** `DAY_NIGHT` is a
-pass-through of the pre-populated `S4_DAY_OR_NIGHT` field in
-`crash_event.csv`; neither script computes it. This data extract doesn't
-document FLHSMV's exact rule (clock cutoff vs. sunrise/sunset vs. civil
-twilight, statewide vs. per-location).
-
-### New comparison figures across Bicycle / E-Bike / E-Scooter (Light,
-Weather, Driver Behavior, Intersection Control, Road Type, Age Band)
-
-**✅ Done — and converted to % within mode**, since raw counts let whichever
-mode has more rows swamp every bar and hide whether the *shape* of the
-distribution actually differs. (In the most recent full run the three
-active modes came out fairly close in size — Bicycle 5,620 / E-Bike 6,353 /
-E-Scooter 5,274 — but %-within-mode is the right default regardless, since
-that balance isn't guaranteed to hold as more narratives get classified.)
-
-| Figure | `eda_analysis_combined.py` | Dashboard |
-|---|---|---|
-| Light Conditions by Mode | `04e_light_conditions` (now %) | now % |
-| Weather Conditions by Mode | `04f_weather_conditions` (now %) | now % |
-| Driver Behavior by Mode | `10a_driver_flags_by_mode` (already %) | already % |
-| Intersection Control by Mode | `13e_intersection_control_by_mode` (now %) | now % |
-| Road Type by Mode | `04c_road_type` (now %) | now % |
-| Age Distribution by Band, by Mode | new `02d_age_band_by_mode` | already existed |
-| Median Type by Mode | `13b_median_type_by_mode` (now %) — **confirmed skipped in the latest run**: `MEDIAN_TYPE` is empty for every crash matched to `roadway_segment.csv` in this data extract, not a code bug (script now prints an explicit skip message saying so) | n/a — no data to show |
-| Lane Count by Mode | `13d_lane_count_by_mode` (now %) — **confirmed skipped**: `NUM_THRU_LANES` is likewise empty for all matched crashes in this extract | n/a — no data to show |
-
-### Explore spatiotemporal clustering for emerging hotspots
-
-**✅ Done on the When & Where tab.** Pipeline section `09d` runs spatial
-DBSCAN per mode, splits each cluster at the median year (`SPLIT_YEAR`), and
-exports `spatiotemporal_hotspots_by_mode.csv`. The dashboard:
-
-- Overlays DBSCAN centers on Map 1 and shows a Top 10 table (with county)
-- Runs a **spatiotemporal growth explorer** where the **primary** label is
-  Poisson rate-ratio significance (p < 0.05); the 1.5× early→late rule is
-  exploratory only
-- Explains early vs late (years ≤ vs > `SPLIT_YEAR`) in-tab
-
-Static PNG `09d_emerging_hotspots_by_mode.png` is skipped when the
-interactive explorer is present.
-
-**Caveats:** `eps`/`min_samples` are exploratory; this is spatial DBSCAN +
-a period split, not a full space-time scan statistic (SaTScan). Getis-Ord
-Gi\* on tracts is available separately on the same tab for significance of
-spatial clustering at the tract level.
-
-### Empirical Bayes excess-crash ranking / tract map
-
-**✅ Done on When & Where.** Negative-binomial SPF with population exposure,
-trained on all Florida tracts for the selected mode; county fixed effects
-when the fit is stable (else statewide intercept-only). Table + choropleth
-colored by EB percentile; hover shows EB estimate, observed, predicted,
-excess, and population. Formula and column glossary are in the tab expander.
-
-### Relative crash risk = crash frequency ÷ Strava cycling volume, by
-county (and tract)
-
-**⛔ Pending — blocked on external data, exactly as flagged originally.**
-`eda_analysis_combined.py` section `09e` is written to compute this
-automatically the moment a Strava county-volume file exists at
-`{DATA}/strava_county_volume.csv` (columns: `COUNTY_NAME` +
-`STRAVA_TRIPS`/`STRAVA_MILES`) — until then it prints a "pending" message
-and exits cleanly. Tract-level needs one more step not yet built: a spatial
-join of crash lat/lon to Census TIGER tract polygons. **Action item:** get
-the Strava export from Xingjing.
-
-### Why is the citation rate declining over time? Add a line per mode.
-
-- **✅ Per-mode lines: done, both files.** `eda_analysis_combined.py`: new
-  `11c_citation_rate_over_time_by_mode`. Dashboard: "Citation Rate Over
-  Time" now plots one line per mode instead of one pooled line.
-- **⛔ "Why": not answered.** Leading hypothesis to rule out first: a
-  reporting-lag artifact, where the most recent 1–2 years haven't had all
-  citations entered into `violation.csv` yet (citations can be filed after
-  the initial crash report) — check whether the decline is concentrated in
-  the latest year(s) before treating it as a real behavioral trend.
-
-### Age Distribution by Injury Severity as three separate figures (one per
-mode)
-
-**✅ Done, both files.** `eda_analysis_combined.py`: new
-`02e_age_by_severity_bicycle`, `02f_age_by_severity_ebike`,
-`02g_age_by_severity_escooter` (this comparison didn't exist at all before).
-Dashboard Tab 6 now renders three side-by-side violin plots (one per mode)
-instead of one combined chart.
-
----
-
-## Known UI Fixes
-
-- **Double-box outline on the All/KSI/Fatal preset buttons (and the
-  Download/Reset buttons):** the sidebar CSS was setting `border` on
-  `button *` (every element *inside* the button, not just the button
-  itself), which drew a second nested border hugging the label text.
-  Fixed by scoping the border rule to the `<button>` element only.
-
-## Other fixes made along the way (not explicitly requested)
-
-- **Bug fix:** the original Lane Count figure (`13d`) had a stray
-  unconditional `save(fig, ...)` call *outside* its `if len(lane_ct):`
-  guard — when lane data was empty, this saved a stale/blank figure left
-  over from whatever plot ran before it. Removed.
-- Added CSV exports for every new %-within-mode table (e.g.
-  `road_type_by_mode_pct.csv`, `light_condition_by_mode_pct.csv`,
-  `age_band_by_mode_pct.csv`) alongside the raw-count versions that already
-  existed, so nothing is lost.
-- **Bug fix:** the `S4_CRASH_TYPE breakdown` note under "Data Loading" was
-  printing hardcoded example numbers ("Bicycle (59k), Pedestrian (14k),
-  Single Vehicle (22k)") left over from an earlier/different data pull,
-  instead of the actual counts for the current run. Now computed dynamically
-  from `ct_counts` every run, so it can't drift out of sync with the real
-  data again.
-- Added an explicit skip message for `13b_median_type_by_mode` (previously
-  it just silently didn't produce a file when `MEDIAN_TYPE` had no data,
-  matching the message `13d` already had for `NUM_THRU_LANES`).
-
-## First Full Run — Confirmed Results (worth keeping on record)
-
-Ran clean end-to-end on the full dataset (20,437 crashes; 17,247
-active-mode: Bicycle 5,620 / E-Bike 6,353 / E-Scooter 5,274 — the three
-modes came out fairly close in size, not lopsided). A few things the run
-surfaced that are worth flagging to the team rather than just leaving in a
-console log:
-
-- **3–4pm timing (README §22):** at E-Bike's peak hour (16:00–17:00),
-  E-Bike is 10.5% of its own crashes and E-Scooter is 10.2% of its own,
-  vs. Bicycle at 8.0%. That's a real, if modest, gap — mild support for an
-  E-Bike/E-Scooter-specific explanation (school dismissal, delivery/gig
-  timing) rather than pure shared PM-commute overlap. Still needs the
-  age-band/school-day cross-tab to actually confirm a cause.
-- **Citation rate reverses by tier (README §1/§25):** Bicycle has the
-  highest citation rate at the *all-crashes* (38.3%) and *KSI* (44.9%)
-  tiers, but at the *fatal-only* tier E-Bike drops to 14.4% while Bicycle
-  (26.8%) and E-Scooter (22.9%) stay much closer together. Worth a closer
-  look before writing up "Bicycle has the highest citation rate" as a
-  blanket statement — it depends which severity tier you're looking at.
-- **Hotspot chaining check came back clean:** none of the DBSCAN clusters
-  in this run held more than 10% of their mode's total geocoded crashes, so
-  no `[CHECK]` chaining warning fired. The one large-looking circle in the
-  09d figure (E-Scooter, 227 crashes) is a genuine size difference against
-  much smaller 15–34-crash clusters, not a DBSCAN artifact from a fixed
-  501m radius chaining a road corridor together.
-- **13b (Median Type) and 13d (Lane Count) by mode are empty in this data
-  extract** — `MEDIAN_TYPE` and `NUM_THRU_LANES` have zero non-null values
-  across every crash matched to `roadway_segment.csv`. This is a real gap
-  in the FDOT roadway-segment join for this pull, not a script bug; both
-  now print an explicit skip message saying so instead of silently
-  producing nothing.
+- `S4_LATITUDE`/`S4_LONGITUDE` (~98.5% complete) or fallback `LATITUDE`/`LONGITUDE` are required in `power_bi_export.csv` for crash-location maps.
+- Severity risk factors use `S4_CRASH_SEVERITY`.
+- The sidebar **All / KSI / Fatal** preset buttons filter every tab simultaneously.
+- Crash data covers **January 1, 2014 through 2026** (confirm exact end date with FLHSMV before citing in a report). E-Bike/E-Scooter counts are a **floor** — crashes whose narratives never mention an e-bike/e-scooter keyword were never in the candidate pool.
+- Relative crash risk by Strava cycling volume is pending external data (`strava_county_volume.csv`); the pipeline section runs automatically once that file is present.
