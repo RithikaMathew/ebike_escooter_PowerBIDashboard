@@ -853,52 +853,28 @@ def load_cause_data(path_or_buffer, _mtime=None):
 
 
 def file_input(label, default_path, key):
-    """Sidebar uploader with a friendly fallback: use the file sitting next
-    to the script if present, else let the user upload it, else skip
-    silently for optional files."""
-    up = st.file_uploader(label, type="csv", key=key)
-    if up is not None:
-        return up
+    """Load data from local file only (no upload)."""
     if os.path.exists(default_path):
         return default_path
     return None
 
 
-with st.sidebar:
-    st.markdown("### \U0001F4C2 Data Source")
-    main_src = file_input(f"Upload {DEFAULT_PATH}", DEFAULT_PATH, "main_upload")
-    with st.expander("Optional: demographics & pipeline info"):
-        demo_src = file_input(f"Upload {DEFAULT_DEMO_PATH}", DEFAULT_DEMO_PATH, "demo_upload")
-        meta_src = file_input(f"Upload {DEFAULT_META_PATH}", DEFAULT_META_PATH, "meta_upload")
-        narrative_src = file_input(f"Upload {DEFAULT_NARRATIVE_PATH}", DEFAULT_NARRATIVE_PATH, "narrative_upload")
-        hotspot_src = file_input(f"Upload {DEFAULT_HOTSPOT_PATH}", DEFAULT_HOTSPOT_PATH, "hotspot_upload")
-        cause_src = file_input(f"Upload {DEFAULT_CAUSE_PATH}", DEFAULT_CAUSE_PATH, "cause_upload")
-    with st.expander("Optional: census tract boundaries (for tract-level maps)"):
-        st.caption(
-            "Drop a `census_tracts.geojson` file (GEOID + a total-population column + geometry) "
-            "in the same folder you run this dashboard from and it loads automatically -- no "
-            "upload needed. `build_census_tracts.py` (run once, locally) generates that file "
-            "for Florida from TIGER/Line tract boundaries + ACS table B01003. The uploader below "
-            "is just a fallback if you'd rather not put the file next to the script."
-        )
-        tract_up = st.file_uploader("Or upload census_tracts.geojson", type=["geojson", "json"], key="tract_upload")
-        tract_src = tract_up if tract_up is not None else (
-            "census_tracts.geojson" if os.path.exists("census_tracts.geojson") else None
-        )
-        if tract_src == "census_tracts.geojson":
-            st.caption("\u2713 Found `census_tracts.geojson` in the working directory -- using it automatically.")
-        tract_pop_col = st.text_input(
-            "Population column name in that file", value="POPULATION", key="tract_pop_col"
-        )
+main_src = file_input("", DEFAULT_PATH, "main_upload")
+demo_src = file_input("", DEFAULT_DEMO_PATH, "demo_upload")
+meta_src = file_input("", DEFAULT_META_PATH, "meta_upload")
+narrative_src = file_input("", DEFAULT_NARRATIVE_PATH, "narrative_upload")
+hotspot_src = file_input("", DEFAULT_HOTSPOT_PATH, "hotspot_upload")
+cause_src = file_input("", DEFAULT_CAUSE_PATH, "cause_upload")
+tract_src = "census_tracts.geojson" if os.path.exists("census_tracts.geojson") else None
+
 
 if main_src is not None:
     df_raw = load_data(main_src, _mtime=_mtime_key(main_src))
 else:
     st.info(
         f"\U0001F4C2 **Waiting on crash data.** This dashboard needs "
-        f"`{DEFAULT_PATH}` to run -- either place it in the same folder as "
-        f"`dashboard.py` before launching `streamlit run dashboard.py`, or "
-        f"upload it using the **Data Source** panel in the sidebar. "
+        f"`{DEFAULT_PATH}` to run -- place it in the same folder as "
+        f"`dashboard.py` before launching `streamlit run dashboard.py`. "
         f"This isn't an error, just Streamlit waiting on a file."
     )
     st.stop()
@@ -1240,14 +1216,8 @@ if df.empty:
     st.warning("No crashes match the current filter combination. Try widening a filter.")
     st.stop()
 
-with st.sidebar:
-    st.download_button(
-        "\u2B07 Download filtered data (CSV)",
-        df.to_csv(index=False).encode("utf-8"),
-        file_name="filtered_crashes.csv",
-        mime="text/csv",
-        width="stretch",
-    )
+
+
 
 # ============================================================================
 # KPI ROW -- mode-focused (Bicycle / E-Bike / E-Scooter each get their own

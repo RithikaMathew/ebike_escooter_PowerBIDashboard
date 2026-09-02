@@ -362,32 +362,23 @@ def load_meta(path_or_buffer):
 
 
 def file_input(label, default_path, key):
-    """Sidebar uploader with a friendly fallback: use the file sitting next
-    to the script if present, else let the user upload it, else skip
-    silently for optional files."""
-    up = st.file_uploader(label, type="csv", key=key)
-    if up is not None:
-        return up
+    """Load data from local file only (no upload)."""
     if os.path.exists(default_path):
         return default_path
     return None
 
 
-with st.sidebar:
-    st.markdown("### \U0001F4C2 Data Source")
-    main_src = file_input(f"Upload {DEFAULT_PATH}", DEFAULT_PATH, "main_upload")
-    with st.expander("Optional: demographics & pipeline info"):
-        demo_src = file_input(f"Upload {DEFAULT_DEMO_PATH}", DEFAULT_DEMO_PATH, "demo_upload")
-        meta_src = file_input(f"Upload {DEFAULT_META_PATH}", DEFAULT_META_PATH, "meta_upload")
+main_src = file_input("", DEFAULT_PATH, "main_upload")
+demo_src = file_input("", DEFAULT_DEMO_PATH, "demo_upload")
+meta_src = file_input("", DEFAULT_META_PATH, "meta_upload")
 
 if main_src is not None:
     df_raw = load_data(main_src)
 else:
     st.info(
         f"\U0001F4C2 **Waiting on crash data.** This dashboard needs "
-        f"`{DEFAULT_PATH}` to run -- either place it in the same folder as "
-        f"`dashboard.py` before launching `streamlit run dashboard.py`, or "
-        f"upload it using the **Data Source** panel in the sidebar. "
+        f"`{DEFAULT_PATH}` to run -- place it in the same folder as "
+        f"`dashboard.py` before launching `streamlit run dashboard.py`. "
         f"This isn't an error, just Streamlit waiting on a file."
     )
     st.stop()
@@ -661,14 +652,8 @@ if df.empty:
     st.warning("No crashes match the current filter combination. Try widening a filter.")
     st.stop()
 
-with st.sidebar:
-    st.download_button(
-        "\u2B07 Download filtered data (CSV)",
-        df.to_csv(index=False).encode("utf-8"),
-        file_name="filtered_crashes.csv",
-        mime="text/csv",
-        use_container_width=True,
-    )
+
+
 
 # ============================================================================
 # KPI ROW -- mode-focused (Bicycle / E-Bike / E-Scooter each get their own

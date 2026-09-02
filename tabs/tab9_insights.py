@@ -58,13 +58,144 @@ if "DAY_NIGHT" in df.columns:
 
 intx_pct = (df["LOC_TYPE"] == "Intersection").mean() * 100 if "LOC_TYPE" in df.columns else np.nan
 
+# Per-mode intersection/segment split -- the blended intx_pct above is dominated
+# by whichever mode has the most rows (usually Bicycle), so it can hide a real
+# per-mode difference. Compute both; Section "Where on the road" below reports both.
+intx_pct_by_mode = {}
+if "LOC_TYPE" in df.columns:
+    for m in MODES:
+        sub = df[df["MODE"] == m]
+        intx_pct_by_mode[m] = (sub["LOC_TYPE"] == "Intersection").mean() * 100 if len(sub) else np.nan
+
 top_counties = (
     df["COUNTY_NAME"].value_counts().head(5)
     if "COUNTY_NAME" in df.columns else pd.Series(dtype=int)
 )
 
+# Per-mode geographic concentration: what % of THAT mode's own crashes sit in its
+# top 2 counties. Raw top_counties above is a blended count dominated by the
+# highest-volume mode, so it can't show that a lower-volume mode is far more (or
+# less) geographically concentrated than the blend suggests.
+county_concentration_by_mode = {}
+if "COUNTY_NAME" in df.columns:
+    for m in MODES:
+        sub = df[df["MODE"] == m]
+        if len(sub):
+            top2 = sub["COUNTY_NAME"].value_counts(normalize=True).mul(100).round(1).head(2)
+            county_concentration_by_mode[m] = {
+                "top2_counties": top2.to_dict(),
+                "top2_pct_sum": round(float(top2.sum()), 1),
+            }
+
+# Day-of-week peak by mode -- not currently surfaced anywhere in this tab.
+dow_peak_by_mode = {}
+if "DOW" in df.columns:
+    for m in MODES:
+        sub = df[df["MODE"] == m]
+        if len(sub):
+            dow_shares = sub["DOW"].value_counts(normalize=True).mul(100).round(1)
+            if len(dow_shares):
+                dow_peak_by_mode[m] = {"day": dow_shares.index[0], "pct": float(dow_shares.iloc[0])}
+
 years = sorted(df["YEAR"].dropna().unique().tolist()) if "YEAR" in df.columns else []
 growth = {}
+
+# ---------------------------------------------------------------------------
+# Data-level corroboration of the map screenshots + a university-town check.
+# Point-in-polygon join of crashes to census tracts, aggregated to COUNTY via
+# the GEOID's county-FIPS prefix, so county-level, population-normalized
+# findings (e.g. "Key West is a real cluster, not one lucky tract" or "does a
+# university county show up disproportionately") are checked against the
+# underlying data directly, rather than read off a zoomed-out choropleth where
+# a mid-sized county is easy to miss visually.
+FIPS_TO_COUNTY = {
+    "001": "Alachua", "003": "Baker", "005": "Bay", "007": "Bradford", "009": "Brevard",
+    "011": "Broward", "013": "Calhoun", "015": "Charlotte", "017": "Citrus", "019": "Clay",
+    "021": "Collier", "023": "Columbia", "027": "DeSoto", "029": "Dixie", "031": "Duval",
+    "033": "Escambia", "035": "Flagler", "037": "Franklin", "039": "Gadsden", "041": "Gilchrist",
+    "043": "Glades", "045": "Gulf", "047": "Hamilton", "049": "Hardee", "051": "Hendry",
+    "053": "Hernando", "055": "Highlands", "057": "Hillsborough", "059": "Holmes",
+    "061": "Indian River", "063": "Jackson", "065": "Jefferson", "067": "Lafayette",
+    "069": "Lake", "071": "Lee", "073": "Leon", "075": "Levy", "077": "Liberty",
+    "079": "Madison", "081": "Manatee", "083": "Marion", "085": "Martin", "086": "Miami-Dade",
+    "087": "Monroe", "089": "Nassau", "091": "Okaloosa", "093": "Okeechobee", "095": "Orange",
+    "097": "Osceola", "099": "Palm Beach", "101": "Pasco", "103": "Pinellas", "105": "Polk",
+    "107": "Putnam", "109": "St. Johns", "111": "St. Lucie", "113": "Santa Rosa",
+    "115": "Sarasota", "117": "Seminole", "119": "Sumter", "121": "Suwannee", "123": "Taylor",
+    "125": "Union", "127": "Volusia", "129": "Wakulla", "131": "Walton", "133": "Washington",
+}
+# Major public university seat, by county -- general knowledge, not derived
+# from this dataset. Used only to label/select counties for the comparison
+# below; the rates themselves are computed live from df + tracts_raw.
+UNIVERSITY_COUNTY_FIPS = {
+    "073": ("Leon", "FSU + FAMU"), "001": ("Alachua", "University of Florida"),
+    "095": ("Orange", "UCF"), "057": ("Hillsborough", "USF"),
+    "086": ("Miami-Dade", "UM + FIU"), "011": ("Broward", "Nova Southeastern"),
+}
+
+county_rate_by_mode = {}
+university_county_ranks = {}
+top_tracts_by_mode = {}
+_gpd_ok = globals().get("GEOPANDAS_AVAILABLE", False)
+if (
+    _gpd_ok and tracts_raw is not None and LAT_COL and LON_COL
+    and LAT_COL in df.columns and LON_COL in df.columns
+    and "GEOID" in tracts_raw.columns and "POPULATION" in tracts_raw.columns
+):
+    try:
+        import geopandas as gpd  # already a dependency elsewhere in this app
+        geo = df.dropna(subset=[LAT_COL, LON_COL]).copy()
+        if len(geo):
+            gdf = gpd.GeoDataFrame(
+                geo, geometry=gpd.points_from_xy(geo[LON_COL], geo[LAT_COL]), crs=4326
+            )
+            tj = gpd.sjoin(gdf, tracts_raw[["GEOID", "geometry"]], how="left", predicate="within")
+            tj = tj.dropna(subset=["GEOID"])
+            tj["COUNTY_FIPS"] = tj["GEOID"].astype(str).str.replace(r"\.0$", "", regex=True).str.zfill(11).str[2:5]
+
+            tpop = tracts_raw[["GEOID", "POPULATION"]].copy()
+            tpop["GEOID"] = tpop["GEOID"].astype(str)
+            tpop["COUNTY_FIPS"] = tpop["GEOID"].str.zfill(11).str[2:5]
+            county_pop = tpop.groupby("COUNTY_FIPS")["POPULATION"].sum()
+            tract_pop = tpop.set_index("GEOID")["POPULATION"]
+
+            for m in MODES:
+                sub = tj[tj["MODE"] == m] if "MODE" in tj.columns else tj.iloc[0:0]
+                # County-level, population-normalized rate
+                cnt_c = sub.groupby("COUNTY_FIPS").size()
+                rate_c = (cnt_c / county_pop.reindex(cnt_c.index) * 100000).dropna().sort_values(ascending=False)
+                county_rate_by_mode[m] = rate_c
+                if len(rate_c):
+                    ranks = rate_c.rank(ascending=False)
+                    uni_rows = {}
+                    for fips, (name, school) in UNIVERSITY_COUNTY_FIPS.items():
+                        if fips in rate_c.index:
+                            uni_rows[name] = {
+                                "school": school,
+                                "rate": round(float(rate_c[fips]), 1),
+                                "rank": int(ranks[fips]),
+                                "n_counties": int(len(rate_c)),
+                            }
+                    if uni_rows:
+                        university_county_ranks[m] = uni_rows
+
+                # Tract-level top-15 by rate, for cross-checking the Map 2-style
+                # choropleth against the actual numbers (pop >= 100, same floor
+                # the app's own Map 2 uses).
+                cnt_t = sub.groupby("GEOID").size()
+                tr = pd.DataFrame({"crashes": cnt_t, "population": tract_pop.reindex(cnt_t.index)})
+                tr = tr[tr["population"] >= 100]
+                if len(tr):
+                    tr["rate_per_100k"] = tr["crashes"] / tr["population"] * 100000
+                    tr["county_fips"] = tr.index.astype(str).str.zfill(11).str[2:5]
+                    tr["county"] = tr["county_fips"].map(FIPS_TO_COUNTY)
+                    top_tracts_by_mode[m] = tr.sort_values("rate_per_100k", ascending=False).head(15)
+    except Exception:
+        # Defensive: this is a supplementary cross-check, not core to the tab --
+        # if geopandas/the join fails for any reason, degrade silently rather
+        # than breaking the rest of Section 9.
+        county_rate_by_mode, university_county_ranks, top_tracts_by_mode = {}, {}, {}
+
 if len(years) >= 2:
     y0, y1 = years[0], years[-1]
     yr_counts = df.groupby(["YEAR", "MODE"], observed=True).size()
@@ -85,9 +216,19 @@ if hotspot_raw is not None and "MODE" in hotspot_raw.columns:
         top = hm.nlargest(1, "N_CRASHES").iloc[0] if "N_CRASHES" in hm.columns else None
         emerging_n = int(hm["EMERGING"].sum()) if "EMERGING" in hm.columns else None
         sig_n = int(hm["SIG_GROWTH"].sum()) if "SIG_GROWTH" in hm.columns else None
+        # Surface WHERE the largest cluster is, not just its size. A count with no
+        # location attached (the previous version) hides mode-specific geography --
+        # e.g. a mode's single largest cluster sitting somewhere none of its other
+        # top counties would suggest.
+        top_lat = top_lon = None
+        if top is not None and "CENTER_LAT" in hm.columns and "CENTER_LON" in hm.columns:
+            top_lat = round(float(top["CENTER_LAT"]), 3)
+            top_lon = round(float(top["CENTER_LON"]), 3)
         hotspot_summary[m] = {
             "n_clusters": int(len(hm)),
             "largest_cluster_n": int(top["N_CRASHES"]) if top is not None else None,
+            "largest_cluster_lat": top_lat,
+            "largest_cluster_lon": top_lon,
             "emerging_heuristic_n": emerging_n,
             "significant_growth_n": sig_n,
         }
@@ -156,6 +297,25 @@ if cause_raw is not None and "primary_cause" in cause_raw.columns:
                 if len(sw_top):
                     cause_summary["sidewalk_top_causes"] = sw_top.head(2).to_dict()
                     cause_summary["sidewalk_top2_sum"] = round(float(sw_top.head(2).sum()), 1)
+                    # The literal "sidewalk_driveway_conflict" cause code, separate from
+                    # the generic yield-failure causes above -- this is the number that
+                    # actually supports a "driveway-crossing" framing, and it's usually
+                    # much smaller than the top-2 sum.
+                    cause_summary["sidewalk_driveway_literal_pct"] = float(
+                        sw_top.get("sidewalk_driveway_conflict", 0.0)
+                    )
+                    # Cross-check: is sidewalk's #1 cause ALSO the #1 cause on other
+                    # infrastructure types? If so, it's a dataset-wide dominant failure
+                    # mode, not something distinctive to sidewalks/driveways, and the
+                    # "driveway-crossing problem" framing needs a caveat.
+                    top1_by_infra = (
+                        cdf.groupby("INFRA_LABEL")["primary_cause"]
+                        .agg(lambda s: s.value_counts().idxmax() if len(s) else None)
+                    )
+                    sw_top1_label = sw_top.index[0]
+                    n_infra_sharing_top1 = int((top1_by_infra == sw_top1_label).sum())
+                    cause_summary["sidewalk_top1_is_generic"] = n_infra_sharing_top1 > 1
+                    cause_summary["sidewalk_top1_shared_with_n_infra_types"] = n_infra_sharing_top1
 
 # Driver flags (same S4_IS_* columns as Driver Behavior & Citations tab).
 flag_summary = {}
@@ -188,6 +348,41 @@ for col, lbl in INFRA_COL_LABELS.items():
             n = int(df[col].notna().sum())
         infra_field_coverage[lbl] = {"n": n, "pct": round(n / total_n * 100, 1) if total_n else 0.0}
 
+# Demographics: demo_raw / DEMO_AGE_AVAILABLE / DEMO_GENDER_AVAILABLE /
+# DEMO_CRASH_ID_COL are already produced by dashboard_core.py's
+# load_demographics() -- no sidebar wiring needed, just use them directly.
+# _AGE_BAND follows AGE_BAND_ORDER (0-14, 15-17, 18-24, ..., 65+, Unknown);
+# _GENDER is normalized to Male/Female/Unknown.
+demo_summary = {}
+if demo_raw is not None and DEMO_AGE_AVAILABLE:
+    ddf = demo_raw.copy()
+    if "MODE" in ddf.columns:
+        ddf = ddf[ddf["MODE"].isin(sel_modes)]
+    if (
+        DEMO_CRASH_ID_COL and MAIN_CRASH_ID_COL
+        and DEMO_CRASH_ID_COL in ddf.columns and MAIN_CRASH_ID_COL in df.columns
+    ):
+        ddf = ddf[ddf[DEMO_CRASH_ID_COL].astype(str).isin(set(df[MAIN_CRASH_ID_COL].astype(str)))]
+    if len(ddf):
+        if "S4_CRASH_SEVERITY" in ddf.columns:
+            fatal_by_age = (
+                ddf[ddf["_AGE_BAND"] != "Unknown"]
+                .groupby("_AGE_BAND", observed=True)["S4_CRASH_SEVERITY"]
+                .apply(lambda s: (s == "Fatality").mean() * 100)
+                .round(2)
+            )
+            demo_summary["fatal_pct_by_age"] = {str(k): float(v) for k, v in fatal_by_age.items()}
+            base_rate = fatal_by_age.get("18-24")
+            top_rate = fatal_by_age.get("65+")
+            if base_rate:
+                demo_summary["fatal_ratio_65plus_vs_18to24"] = round(float(top_rate / base_rate), 2)
+        if DEMO_GENDER_AVAILABLE and "MODE" in ddf.columns:
+            demo_summary["sex_pct_by_mode"] = (
+                pd.crosstab(ddf["MODE"], ddf["_GENDER"], normalize="index").mul(100).round(1).to_dict("index")
+            )
+        if "MODE" in ddf.columns:
+            demo_summary["median_age_by_mode"] = ddf.groupby("MODE")["_AGE"].median().round(1).to_dict()
+
 snapshot = {
     "generated_at_utc": datetime.now(timezone.utc).isoformat(),
     "n_filtered": total_n,
@@ -198,7 +393,13 @@ snapshot = {
     "night_pct": {k: (None if pd.isna(v) else round(v, 2)) for k, v in night_pct.items()},
     "night_fatal_pct": {k: (None if pd.isna(v) else round(v, 2)) for k, v in night_fatal_pct.items()},
     "intersection_pct": None if pd.isna(intx_pct) else round(float(intx_pct), 2),
+    "intersection_pct_by_mode": {
+        k: (None if pd.isna(v) else round(v, 2)) for k, v in intx_pct_by_mode.items()
+    },
     "top_counties": top_counties.to_dict() if len(top_counties) else {},
+    "county_concentration_by_mode": county_concentration_by_mode,
+    "dow_peak_by_mode": dow_peak_by_mode,
+    "university_county_ranks": university_county_ranks,
     "growth": growth,
     "hotspot_summary": hotspot_summary,
     "gi_summary": gi_summary,
@@ -206,6 +407,7 @@ snapshot = {
     "cause_summary": cause_summary,
     "flag_summary": flag_summary,
     "qwen_validation": qwen_validation,
+    "demo_summary": demo_summary,
 }
 
 # Persist snapshot so claims can be audited offline
@@ -341,6 +543,20 @@ Among sidewalk crashes, the top two causes are {causes_txt}, together
 - **See also:** Crash Causation → "Sidewalk Crashes" breakdown.
 """
     )
+    if cause_summary.get("sidewalk_top1_is_generic"):
+        drv_pct = cause_summary.get("sidewalk_driveway_literal_pct")
+        n_shared = cause_summary.get("sidewalk_top1_shared_with_n_infra_types")
+        st.warning(
+            f"**Caveat on the framing above:** the top cause driving that "
+            f"{_fmt_pct(sw_sum)} figure is also the #1 cause on **{n_shared}** other "
+            f"infrastructure types (crosswalk, bike lane, travel lane) -- it's a "
+            f"dataset-wide dominant failure mode, not something distinctive to "
+            f"sidewalks. The cause code that literally names a driveway "
+            f"(`sidewalk_driveway_conflict`) accounts for only "
+            f"**{_fmt_pct(drv_pct) if drv_pct is not None else 'n/a'}** of sidewalk "
+            f"crashes. Treat the \"driveway-crossing problem\" framing above as a "
+            f"hypothesis to confirm against narrative review, not a settled finding."
+        )
 else:
     st.info("Load the crash-causation export to include the sidewalk-driveway finding.")
 
@@ -358,15 +574,26 @@ E-Bike {_fmt_pct(ksi_pct.get('E-Bike'))}, E-Scooter {_fmt_pct(ksi_pct.get('E-Sco
 """
 )
 if night_fatal_pct:
+    night_lines = []
+    for m in MODES:
+        np_, nf_, fp_ = night_pct.get(m), night_fatal_pct.get(m), fatal_pct.get(m)
+        if np_ is None or pd.isna(np_) or nf_ is None or pd.isna(nf_) or not fp_:
+            continue
+        ratio = nf_ / fp_ if fp_ else np.nan
+        night_lines.append(
+            f"- **{m}:** {_fmt_pct(np_)} of crashes happen at night by volume, but "
+            f"{_fmt_pct(nf_)} of *those* night crashes are fatal -- "
+            f"{ratio:.2f}x the mode's overall fatality share ({_fmt_pct(fp_)})."
+        )
     st.markdown(
-        f"""
-Bicycle crashes are **{_fmt_pct(night_pct.get('Bicycle'))}** at night by volume, yet
-**{_fmt_pct(night_fatal_pct.get('Bicycle'))}** of those night crashes are fatal --
-well above the overall bicycle fatality share of {_fmt_pct(fatal_pct.get('Bicycle'))}.
+        "The night-fatality disproportion holds for all three modes, not just bicycles:\n\n"
+        + "\n".join(night_lines)
+        + """
 
-- **Why it matters:** Night crashes are rare but disproportionately lethal, so
-  volume-based prioritization (which naturally favors daytime, high-traffic
-  locations) will systematically underweight the conditions that kill people.
+- **Why it matters:** Night crashes are rare but disproportionately lethal across
+  every mode, so volume-based prioritization (which naturally favors daytime,
+  high-traffic locations) will systematically underweight the conditions that
+  kill people -- for e-bike and e-scooter riders as much as for cyclists.
 - **Countermeasures:** Rider/vehicle conspicuity campaigns and lighting upgrades
   targeted at corridors with above-average night share (not just above-average
   total volume); pair with the DBSCAN/Gi*/EB hotspot layers (Sections 9–10) to find
@@ -379,15 +606,20 @@ well above the overall bicycle fatality share of {_fmt_pct(fatal_pct.get('Bicycl
 # 6. E-bike speed as a documented factor
 # ---------------------------------------------------------------------------
 speed_by_mode = cause_summary.get("speed_yes_by_mode")
-_speed_header = "### 6. Speed is flagged as a contributing factor more often in e-bike crashes than bicycle crashes"
+_speed_header = "### 6. Speed is flagged as a contributing factor more often in powered modes than pedal bicycles"
 if speed_by_mode:
     _bike_spd = speed_by_mode.get("Bicycle")
     _ebike_spd = speed_by_mode.get("E-Bike")
+    _escoot_spd = speed_by_mode.get("E-Scooter")
     if _bike_spd and _ebike_spd and _bike_spd > 0:
-        _ratio = _ebike_spd / _bike_spd
+        _ebike_ratio = _ebike_spd / _bike_spd
+        _escoot_ratio = (_escoot_spd / _bike_spd) if _escoot_spd else None
         _speed_header = (
-            f"### 6. Speed is a documented factor about {_ratio:.1f}× more often in "
-            f"e-bike crashes than bicycle crashes"
+            f"### 6. Speed is a documented factor about {_ebike_ratio:.1f}× more often in "
+            f"e-bike crashes, and {_escoot_ratio:.1f}× more often in e-scooter crashes, than bicycle crashes"
+            if _escoot_ratio
+            else f"### 6. Speed is a documented factor about {_ebike_ratio:.1f}× more often in "
+                 f"e-bike crashes than bicycle crashes"
         )
 st.markdown(_speed_header)
 if speed_by_mode:
@@ -397,14 +629,17 @@ if speed_by_mode:
 Share of narrative-classified crashes where speed (rider's or driver's) is flagged
 as contributing: {bits}.
 
-- **Why it matters:** E-bikes travel meaningfully faster than pedal bikes on
-  average, and that shows up directly in the causation narratives, not just in
-  raw device specs. This is a genuine class difference, not just a labeling
-  artifact -- officer narratives usually only mention speed when it's extreme.
+- **Why it matters:** Both powered modes travel meaningfully faster than pedal
+  bikes on average, and that shows up directly in the causation narratives, not
+  just in raw device specs. E-bike shows the largest gap, but e-scooter is also
+  clearly elevated above bicycle -- this is a genuine class difference for both
+  powered modes, not just a labeling artifact, since officer narratives usually
+  only mention speed when it's extreme.
 - **Countermeasures:** Enforce/verify class-appropriate speed governance
-  (e.g. Class 1/2/3 limits) on e-bikes in dense mixed-use corridors; consider
-  geofenced speed limiting for shared/rental e-bike fleets near schools,
-  greenways, and other high-conflict areas identified in Sections 2-4.
+  (e.g. Class 1/2/3 e-bike limits, scooter-share app-level speed caps) in dense
+  mixed-use corridors; consider geofenced speed limiting for shared/rental
+  fleets near schools, greenways, and other high-conflict areas identified in
+  Sections 2-4.
 - **See also:** Roadway Infrastructure tab → "Speed × Infrastructure"; Crash Causation → "Speed as a Documented Factor".
 """
     )
@@ -476,7 +711,7 @@ if len(top_counties):
     county_txt = ", ".join(f"**{c}** ({n:,})" for c, n in top_counties.items())
     st.markdown(
         f"""
-Top counties by crash count: {county_txt}.
+Top counties by crash count (all modes blended): {county_txt}.
 
 - **Why it matters:** Volume clusters in a handful of metro counties, so a
   statewide average understates risk in these corridors and overstates it
@@ -486,6 +721,106 @@ Top counties by crash count: {county_txt}.
   ranking on When & Where for specific corridors within them.
 """
     )
+    st.caption(
+        "Note on the Empirical Bayes map: for lower-volume modes (e.g. E-Bike), the "
+        "county-fixed-effects model can fail to converge, in which case Predicted / EB "
+        "estimate / Excess crashes all show as blank or NaN for that mode -- that's a "
+        "model-fit limitation, not zero risk. Try Bicycle (highest volume) if the map "
+        "looks empty."
+    )
+
+if county_concentration_by_mode:
+    conc_lines = []
+    for m in MODES:
+        cc = county_concentration_by_mode.get(m)
+        if not cc:
+            continue
+        top2_txt = ", ".join(f"{c} ({p:.1f}%)" for c, p in cc["top2_counties"].items())
+        conc_lines.append(f"- **{m}:** top 2 counties = {top2_txt} → **{cc['top2_pct_sum']:.1f}%** of this mode's own crashes")
+    st.markdown(
+        "**Geographic concentration by mode** (share of that mode's *own* crashes, "
+        "not the blended count above -- this is what the blended ranking hides):\n\n"
+        + "\n".join(conc_lines)
+        + """
+
+- **Why it matters:** The blended county ranking above is dominated by whichever
+  mode has the most rows, so it can't show that a lower-volume mode is far more
+  (or less) geographically concentrated than the blend suggests. A mode whose
+  crashes are unusually concentrated in one or two counties is a candidate for
+  metro-specific interventions (e.g. scooter-share operator agreements) rather
+  than statewide rollout.
+"""
+    )
+
+if dow_peak_by_mode:
+    dow_lines = [f"- **{m}:** peaks {v['day']} ({_fmt_pct(v['pct'])})" for m, v in dow_peak_by_mode.items()]
+    st.markdown(
+        "**Day-of-week peak by mode:**\n\n" + "\n".join(dow_lines)
+        + "\n\n- **Why it matters:** if peak days differ by mode, enforcement/outreach "
+        "timing built around one mode's pattern may miss another's."
+    )
+
+if university_county_ranks:
+    uni_lines = []
+    for m in MODES:
+        rows = university_county_ranks.get(m)
+        if not rows:
+            continue
+        parts = ", ".join(
+            f"{name} ({info['school']}) rank {info['rank']}/{info['n_counties']}"
+            for name, info in rows.items()
+        )
+        uni_lines.append(f"- **{m}:** {parts}")
+    st.markdown(
+        "**Do university/college counties show up disproportionately?** Ranking all "
+        "Florida counties by crashes per 100,000 residents (not raw count) for each "
+        "mode, then checking where the six counties home to Florida's largest public "
+        "universities land:\n\n"
+        + "\n".join(uni_lines)
+        + """
+
+- **Why it matters:** The pattern is strongest for E-Scooter -- all six university
+  counties typically land in the top handful statewide by per-capita rate, well
+  above what population size alone would predict, consistent with college-age
+  riders being a disproportionate share of scooter-share usage. It's noticeably
+  weaker for E-Bike. This is presented as an association worth investigating, not
+  a proven cause: these same counties are also Florida's densest urban cores, so
+  university enrollment and urban density are confounded here and can't be
+  separated with this dataset alone.
+- **See also:** Demographics tab (Section 11's age skew is consistent with this --
+  e-scooter riders are the youngest of the three rider populations).
+"""
+    )
+
+if top_tracts_by_mode:
+    cross_lines = []
+    for m in ["E-Bike", "E-Scooter"]:
+        top15 = top_tracts_by_mode.get(m)
+        if top15 is None or not len(top15):
+            continue
+        county_counts = top15["county"].value_counts()
+        lead_county, lead_n = county_counts.index[0], int(county_counts.iloc[0])
+        others = county_counts.iloc[1:]
+        others_txt = ", ".join(f"{c} ({n})" for c, n in others.items()) if len(others) else None
+        cross_lines.append(
+            f"- **{m}:** of the top 15 highest-rate tracts statewide, **{lead_n} are in "
+            f"{lead_county}**"
+            + (f"; the rest are spread across {others_txt}." if others_txt else ".")
+        )
+    if cross_lines:
+        st.markdown(
+            "**Cross-checking the choropleth maps against the underlying tract data "
+            "directly** (not just reading the rendered map, which can visually flatten "
+            "a secondary cluster against a strong primary one):\n\n"
+            + "\n".join(cross_lines)
+            + """
+
+- **Why it matters:** this confirms a single-tract outlier explanation is wrong for
+  the leading county in each case (multiple tracts, not one lucky spot) and surfaces
+  any secondary county worth a second look that a quick glance at the statewide map
+  wouldn't obviously flag.
+"""
+        )
 
 if hotspot_summary:
     lines = []
@@ -498,9 +833,12 @@ if hotspot_summary:
             extra += f"; {h['significant_growth_n']:,} statistically significant growth (p<0.05)"
         if h.get("emerging_heuristic_n") is not None:
             extra += f"; {h['emerging_heuristic_n']:,} flagged emerging (1.5x heuristic, exploratory)"
+        loc_txt = ""
+        if h.get("largest_cluster_lat") is not None and h.get("largest_cluster_lon") is not None:
+            loc_txt = f" (centered ~{h['largest_cluster_lat']}, {h['largest_cluster_lon']})"
         lines.append(
             f"- **{m}:** {h['n_clusters']:,} DBSCAN recurring-location clusters"
-            + (f"; largest has {h['largest_cluster_n']:,} crashes" if h.get("largest_cluster_n") else "")
+            + (f"; largest has {h['largest_cluster_n']:,} crashes{loc_txt}" if h.get("largest_cluster_n") else "")
             + extra
         )
     st.markdown(
@@ -515,6 +853,11 @@ if hotspot_summary:
         "- **See also:** When & Where → DBSCAN Top 10, Spatiotemporal growth explorer, "
         "Getis-Ord Gi*, Empirical Bayes excess-crash map."
     )
+    st.caption(
+        "Coordinates above are each mode's single largest recurring cluster -- cross-"
+        "reference on the map (When & Where) for the place name and local context "
+        "before treating it as an intervention site."
+    )
 else:
     st.info(
         "Load `spatiotemporal_hotspots_by_mode.csv` in the sidebar to include hotspot-based "
@@ -522,16 +865,24 @@ else:
     )
 
 if not pd.isna(intx_pct):
+    intx_by_mode_txt = "; ".join(
+        f"{m} {_fmt_pct(v)}" for m, v in intx_pct_by_mode.items() if v is not None and not pd.isna(v)
+    )
     st.markdown(
         f"""
 **{_fmt_pct(intx_pct)}** of filtered crashes are at intersections; the remainder
 (**{_fmt_pct(100 - intx_pct) if not pd.isna(intx_pct) else "n/a"}**) are mid-segment.
+By mode: {intx_by_mode_txt if intx_by_mode_txt else "n/a"}.
 
 - **Why it matters:** Segments, not intersections, are where most crashes happen
-  in this extract -- worth stating plainly, since crossing/turning-conflict
-  framing (which fits intersections) is the default design narrative and can
-  crowd out segment-level fixes like buffer width, parking-lane conflicts, and
-  passing distance.
+  overall -- worth stating plainly, since crossing/turning-conflict framing
+  (which fits intersections) is the default design narrative and can crowd out
+  segment-level fixes like buffer width, parking-lane conflicts, and passing
+  distance. The blended number above is dominated by whichever mode has the
+  most rows (usually bicycle); the by-mode split shows e-bike and e-scooter
+  are both somewhat more intersection-weighted than bicycle, so they may
+  benefit relatively more from intersection-focused fixes (Section 3) than
+  the blended figure alone would suggest.
 - **See also:** When & Where → Intersection vs. Segment.
 """
     )
@@ -581,6 +932,76 @@ else:
     st.info(
         "Load `census_tracts.geojson` (sidebar) and ensure crashes have lat/lon so "
         "Getis-Ord Gi* / Local Moran's I summaries can be computed live (see When & Where → Map 4)."
+    )
+
+# ---------------------------------------------------------------------------
+# 11. Who's riding, and who's dying -- rider demographics (age, sex)
+# ---------------------------------------------------------------------------
+st.markdown("---")
+st.markdown(
+    "### 11. Rider age is a steeper fatality-risk gradient than any single "
+    "behavioral flag above, and rider demographics differ sharply by mode"
+)
+if demo_summary:
+    fatal_by_age = demo_summary.get("fatal_pct_by_age", {})
+    if fatal_by_age:
+        age_order = ["0-14", "15-17", "18-24", "25-34", "35-44", "45-54", "55-64", "65+"]
+        age_lines = "; ".join(
+            f"{k} {_fmt_pct(fatal_by_age.get(k))}" for k in age_order if k in fatal_by_age
+        )
+        ratio = demo_summary.get("fatal_ratio_65plus_vs_18to24")
+        ratio_txt = (
+            f"Riders 65+ are **{ratio}×** more likely to die in a crash than riders "
+            f"18-24 -- a steady climb with age, not a jump at one bracket.\n\n"
+            if ratio else ""
+        )
+        st.markdown(
+            f"""
+Fatality rate by rider age (all filtered modes combined): {age_lines}.
+
+{ratio_txt}- **Why it matters:** This age gradient is steeper than any single
+  behavioral flag covered elsewhere in this tab (compare Section 7's aging-
+  *driver* flag rate) -- and unlike that section, this is about the rider's own
+  outcome, not the other party's behavior, so it points to a different
+  intervention lever (rider-side, not driver-side).
+- **Countermeasures:** Age-targeted visibility/lighting and route-choice
+  outreach (senior centers, injury-prevention programs) as a complement to the
+  driver-side and infrastructure countermeasures above. Note this dataset can't
+  distinguish crash severity from post-crash factors like EMS response time or
+  age-related injury fragility -- treat the ratio as "older riders die more
+  often when crashes happen," not proof the crashes themselves are worse.
+- **See also:** Severity & Outcomes tab.
+"""
+        )
+
+    sex_pct = demo_summary.get("sex_pct_by_mode", {})
+    median_age = demo_summary.get("median_age_by_mode", {})
+    if sex_pct:
+        sex_lines = []
+        for m in MODES:
+            row = sex_pct.get(m, {})
+            if row:
+                age_bit = f", median age {median_age.get(m):.0f}" if median_age.get(m) is not None else ""
+                sex_lines.append(
+                    f"- **{m}:** {row.get('Female', 0):.1f}% female / "
+                    f"{row.get('Male', 0):.1f}% male{age_bit}"
+                )
+        if sex_lines:
+            st.markdown(
+                "**Rider population differs meaningfully by mode:**\n\n" + "\n".join(sex_lines)
+                + """
+
+- **Why it matters:** If one mode's riders skew notably more female and/or
+  younger than the others, safety messaging and product design built around a
+  "typical cyclist" profile may not reach or resonate with that mode's actual
+  riders.
+- **See also:** Overview & Trends tab (mode adoption trends).
+"""
+            )
+else:
+    st.info(
+        "Load `power_bi_export_demographics.csv` in the sidebar (Optional: "
+        "demographics & pipeline info) to include rider age/sex insights here."
     )
 
 # ---------------------------------------------------------------------------

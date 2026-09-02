@@ -1,3 +1,5 @@
+tract_pop_col = "POPULATION"  # hardcoded default; was previously a sidebar text input
+
 c1, c2 = st.columns(2)
 with c1:
     dow_mode = df.groupby(["DOW", "MODE"], observed=True).size().reset_index(name="count")
