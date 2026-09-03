@@ -5,19 +5,23 @@ Just & Green Transportation Lab | University of Florida
 Run with:
     streamlit run dashboard.py
 
-Expects `power_bi_export.csv` (as produced by the combined
-eda_analysis_combined.py pipeline) in the same folder as this script,
-or upload it via the sidebar.
+Crash CSVs are loaded from the private GitHub repo
+`RithikaMathew/powerbi-data` using `GITHUB_DATA_TOKEN` in Streamlit
+secrets. Local CSV files are used automatically when present (dev).
 """
 
 import glob
+import io
 import os
 import re
 from collections import Counter
+from urllib.parse import quote
+
 import numpy as np
 import pandas as pd
 import plotly.express as px
 import plotly.graph_objects as go
+import requests
 import streamlit as st
 
 # geopandas/shapely are optional -- only needed for the census-tract spatial
@@ -259,8 +263,18 @@ def compute_qwen_validation_kappa(df, cause_df=None):
     predicted = qdf["QWEN_CLASS"].map(normalize_qwen_class)
     mask = manual.notna() & predicted.notna()
     if mask.sum() >= 10:
-        out["mode_kappa"] = float(cohen_kappa_score(manual[mask], predicted[mask]))
-        out["mode_n"] = int(mask.sum())
+        n_manual_classes = manual[mask].nunique()
+        n_pred_classes = predicted[mask].nunique()
+        if n_manual_classes < 2 or n_pred_classes < 2:
+            out["mode_kappa"] = None
+            out["mode_kappa_warning"] = (
+                f"single-class slice ({n_manual_classes} manual / "
+                f"{n_pred_classes} predicted classes)"
+            )
+            out["mode_n"] = int(mask.sum())
+        else:
+            out["mode_kappa"] = float(cohen_kappa_score(manual[mask], predicted[mask]))
+            out["mode_n"] = int(mask.sum())
 
     if cause_df is not None and "primary_cause" in cause_df.columns and "CRASH_GROUP" in qdf.columns:
         id_col = "REPORT_NUMBER" if "REPORT_NUMBER" in cause_df.columns else None
@@ -278,8 +292,18 @@ def compute_qwen_validation_kappa(df, cause_df=None):
                 pred = merged["ATTRIBUTION"]
                 fmask = ref.notna() & pred.notna()
                 if fmask.sum() >= 10:
-                    out["fault_kappa"] = float(cohen_kappa_score(ref[fmask], pred[fmask]))
-                    out["fault_n"] = int(fmask.sum())
+                    n_ref_classes = ref[fmask].nunique()
+                    n_pred_classes = pred[fmask].nunique()
+                    if n_ref_classes < 2 or n_pred_classes < 2:
+                        out["fault_kappa"] = None
+                        out["fault_kappa_warning"] = (
+                            f"single-class slice ({n_ref_classes} reference / "
+                            f"{n_pred_classes} predicted classes)"
+                        )
+                        out["fault_n"] = int(fmask.sum())
+                    else:
+                        out["fault_kappa"] = float(cohen_kappa_score(ref[fmask], pred[fmask]))
+                        out["fault_n"] = int(fmask.sum())
     return out
 
 
@@ -396,36 +420,61 @@ def spatial_cluster_stats_for_mode(tract_geo, mode):
 
     if mode not in tract_geo.columns:
         return None
-    weights = _build_tract_weights(tract_geo)
-    y = tract_geo[mode].fillna(0).values.astype(float)
+    import numpy as np
+    full_geoids = tract_geo["GEOID"].tolist()
+    fit_geo = tract_geo
+    weights = _build_tract_weights(fit_geo)
+    comp_labels = np.asarray(weights.component_labels)
+    if weights.n_components > 1:
+        main_comp = np.bincount(comp_labels).argmax()
+        keep_mask = comp_labels == main_comp
+        dropped = fit_geo.loc[~keep_mask, "GEOID"].tolist()
+        print(f"[spatial_cluster_stats_for_mode] dropping {len(dropped)} tract(s) "
+              f"disconnected from main Queen-contiguity component: {dropped}")
+        fit_geo = fit_geo.loc[keep_mask].reset_index(drop=True)
+        weights = _build_tract_weights(fit_geo)
+    y = fit_geo[mode].fillna(0).values.astype(float)
     with _warnings.catch_warnings():
         _warnings.simplefilter("ignore")
         gi = G_Local(y, weights, star=None, permutations=999, seed=0, n_jobs=1)
         lm = Moran_Local(y, weights, permutations=999, seed=0, n_jobs=1)
 
-    gi_buckets = []
+    gi_buckets_fit = []
     for z, p in zip(gi.Zs, gi.p_sim):
         if pd.isna(p) or p > 0.10:
-            gi_buckets.append("Not significant")
+            gi_buckets_fit.append("Not significant")
         else:
             conf = "99%" if p <= 0.01 else ("95%" if p <= 0.05 else "90%")
-            gi_buckets.append(
+            gi_buckets_fit.append(
                 f"Hot spot ({conf} confidence)" if z > 0 else f"Cold spot ({conf} confidence)"
             )
 
-    moran_q = [
+    moran_q_fit = [
         MORAN_QUADRANT_LABELS.get(q, "n/a") if p <= 0.05 else "Not significant"
         for q, p in zip(lm.q, lm.p_sim)
     ]
+
+    # Reindex fit-subset results back onto the full, original tract_geo GEOID
+    # order the caller passed in -- dropped (disconnected) tracts get neutral
+    # defaults so the returned arrays always match len(full_geoids).
+    fit_geoids = fit_geo["GEOID"].tolist()
+    idx = {g: i for i, g in enumerate(fit_geoids)}
+    gi_buckets = [gi_buckets_fit[idx[g]] if g in idx else "Not significant" for g in full_geoids]
+    moran_q = [moran_q_fit[idx[g]] if g in idx else "Not significant" for g in full_geoids]
+    gi_z_fit = np.asarray(gi.Zs)
+    gi_p_fit = np.asarray(gi.p_sim)
+    gi_z = [gi_z_fit[idx[g]] if g in idx else np.nan for g in full_geoids]
+    gi_p = [gi_p_fit[idx[g]] if g in idx else np.nan for g in full_geoids]
+
     return {
         "n_hot_spots": int(sum(b.startswith("Hot spot") for b in gi_buckets)),
         "n_cold_spots": int(sum(b.startswith("Cold spot") for b in gi_buckets)),
         "n_high_low_outliers": int(sum(q == "High-Low (outlier)" for q in moran_q)),
-        "n_tracts": int(len(tract_geo)),
+        "n_tracts": int(len(full_geoids)),
         "gi_buckets": gi_buckets,
         "moran_q": moran_q,
-        "gi_z": gi.Zs,
-        "gi_p": gi.p_sim,
+        "gi_z": gi_z,
+        "gi_p": gi_p,
     }
 
 
@@ -739,6 +788,8 @@ st.markdown(CUSTOM_CSS, unsafe_allow_html=True)
 # ============================================================================
 # DATA LOADING
 # ============================================================================
+# CSVs live in the private repo RithikaMathew/powerbi-data and are fetched
+# with GITHUB_DATA_TOKEN from Streamlit secrets (never commit the token).
 DEFAULT_PATH = "power_bi_export.csv"
 DEFAULT_DEMO_PATH = "power_bi_export_demographics.csv"
 DEFAULT_META_PATH = "dashboard_meta.csv"
@@ -747,21 +798,58 @@ DEFAULT_HOTSPOT_PATH = "spatiotemporal_hotspots_by_mode.csv"
 DEFAULT_CAUSE_PATH = "cause_analysis_export.csv"
 
 
+def _github_token_available():
+    try:
+        return bool(st.secrets.get("GITHUB_DATA_TOKEN"))
+    except Exception:
+        return False
+
+
+@st.cache_data(ttl=3600)
+def load_private_csv(file_path, **read_csv_options):
+    """Download a CSV from the private powerbi-data GitHub repo."""
+    encoded_path = quote(file_path, safe="/")
+    url = (
+        "https://api.github.com/repos/"
+        f"RithikaMathew/powerbi-data/contents/{encoded_path}"
+    )
+    response = requests.get(
+        url,
+        headers={
+            "Authorization": f"Bearer {st.secrets['GITHUB_DATA_TOKEN']}",
+            "Accept": "application/vnd.github.raw+json",
+        },
+        timeout=60,
+    )
+    response.raise_for_status()
+    return pd.read_csv(io.BytesIO(response.content), **read_csv_options)
+
+
+def _read_csv(file_path, **read_csv_options):
+    """Prefer a local CSV when present (dev); otherwise fetch from GitHub."""
+    if os.path.exists(file_path):
+        return pd.read_csv(file_path, **read_csv_options)
+    return load_private_csv(file_path, **read_csv_options)
+
+
 def _mtime_key(path_or_buffer):
-    """Cache-busting key: on-disk files are keyed by mtime so an edited/
-    replaced CSV invalidates the cache even if the process never restarts.
-    Uploaded file objects don't need this -- Streamlit already gives each
-    upload a distinct identity."""
+    """Cache-busting key for local files. Private-repo fetches rely on the
+    ttl of load_private_csv / load_* instead."""
     if isinstance(path_or_buffer, str) and os.path.exists(path_or_buffer):
         return os.path.getmtime(path_or_buffer)
     return None
 
 
-@st.cache_data
-def load_data(path_or_buffer, _mtime=None):
+def data_source_available(default_path):
+    """True if the CSV exists locally or we can fetch via GitHub secrets."""
+    return os.path.exists(default_path) or _github_token_available()
+
+
+@st.cache_data(ttl=3600)
+def load_data(file_path, _mtime=None):
     # low_memory=False avoids DtypeWarning on mixed-type columns
     # (e.g. FARS_LANDUSE, CRASH_GROUP) when pandas chunk-infers dtypes.
-    df = pd.read_csv(path_or_buffer, low_memory=False)
+    df = _read_csv(file_path, low_memory=False)
     df["MODE"] = pd.Categorical(df["MODE"], categories=MODES, ordered=True)
     if "S4_CRASH_SEVERITY" in df.columns:
         df["S4_CRASH_SEVERITY"] = pd.Categorical(
@@ -772,11 +860,11 @@ def load_data(path_or_buffer, _mtime=None):
     return df
 
 
-@st.cache_data
-def load_demographics(path_or_buffer, _mtime=None):
+@st.cache_data(ttl=3600)
+def load_demographics(file_path, _mtime=None):
     """Person-level demographics (age/gender), one row per active-mode
     person involved in a crash. Schema is flexible -- see find_col()."""
-    ddf = pd.read_csv(path_or_buffer)
+    ddf = _read_csv(file_path)
     age_col = find_col(ddf, AGE_COL_CANDIDATES)
     gender_col = find_col(ddf, GENDER_COL_CANDIDATES)
     if age_col:
@@ -789,21 +877,21 @@ def load_demographics(path_or_buffer, _mtime=None):
     return ddf
 
 
-@st.cache_data
-def load_meta(path_or_buffer, _mtime=None):
+@st.cache_data(ttl=3600)
+def load_meta(file_path, _mtime=None):
     """Pipeline funnel counts (e.g. raw records -> geocoded -> matched ->
     final export) used on the About tab. Expected as a simple two-column
     CSV: a stage/step label column and a count column, but we degrade
     gracefully to a raw table if the shape is unrecognized."""
-    return pd.read_csv(path_or_buffer)
+    return _read_csv(file_path)
 
 
-@st.cache_data
-def load_narratives(path_or_buffer, _mtime=None):
+@st.cache_data(ttl=3600)
+def load_narratives(file_path, _mtime=None):
     """Per-crash narrative text (Signal4Data crashes with a Qwen-classified
     narrative only -- the S4_Crash_bicycle-only population has no narrative
     text). Powers the interactive keyword/text-mining tab."""
-    ndf = pd.read_csv(path_or_buffer)
+    ndf = _read_csv(file_path)
     if "REPORT_NUMBER" in ndf.columns:
         ndf["REPORT_NUMBER"] = ndf["REPORT_NUMBER"].astype(str)
     if "NARRATIVE_TEXT" in ndf.columns:
@@ -811,14 +899,14 @@ def load_narratives(path_or_buffer, _mtime=None):
     return ndf
 
 
-@st.cache_data
-def load_hotspots(path_or_buffer, _mtime=None):
+@st.cache_data(ttl=3600)
+def load_hotspots(file_path, _mtime=None):
     """Precomputed DBSCAN spatiotemporal cluster table (one row per
     cluster), from eda_analysis_combined.py section 09d."""
-    return pd.read_csv(path_or_buffer)
+    return _read_csv(file_path)
 
 
-@st.cache_data
+@st.cache_data(ttl=3600)
 def load_tracts(path_or_buffer, _mtime=None):
     """Census tract boundaries (+ population) for the spatial-join maps in
     the When & Where tab. Returns a GeoDataFrame in EPSG:4326, or None if
@@ -836,13 +924,13 @@ def load_tracts(path_or_buffer, _mtime=None):
         return None
 
 
-@st.cache_data
-def load_cause_data(path_or_buffer, _mtime=None):
+@st.cache_data(ttl=3600)
+def load_cause_data(file_path, _mtime=None):
     """LLM narrative-classified crash causation (one row per crash) --
     primary_cause / infrastructure_type / speed_contributing, built from
     multilabel_RegBike_cause.xlsx + multilabel_ebike_cause.xlsx. See
     cause_analysis_export.csv for the combined REPORT_NUMBER/MODE schema."""
-    cdf = pd.read_csv(path_or_buffer)
+    cdf = _read_csv(file_path)
     cdf["REPORT_NUMBER"] = cdf["REPORT_NUMBER"].astype(str)
     if "primary_cause" in cdf.columns:
         cdf["ATTRIBUTION"] = cdf["primary_cause"].apply(cause_attribution)
@@ -852,38 +940,43 @@ def load_cause_data(path_or_buffer, _mtime=None):
     return cdf
 
 
-def file_input(label, default_path, key):
-    """Load data from local file only (no upload)."""
-    if os.path.exists(default_path):
-        return default_path
-    return None
+def try_load_csv(loader, file_path):
+    """Load an optional CSV; return None if missing or fetch fails."""
+    if not data_source_available(file_path):
+        return None
+    try:
+        return loader(file_path, _mtime=_mtime_key(file_path))
+    except Exception:
+        return None
 
 
-main_src = file_input("", DEFAULT_PATH, "main_upload")
-demo_src = file_input("", DEFAULT_DEMO_PATH, "demo_upload")
-meta_src = file_input("", DEFAULT_META_PATH, "meta_upload")
-narrative_src = file_input("", DEFAULT_NARRATIVE_PATH, "narrative_upload")
-hotspot_src = file_input("", DEFAULT_HOTSPOT_PATH, "hotspot_upload")
-cause_src = file_input("", DEFAULT_CAUSE_PATH, "cause_upload")
 tract_src = "census_tracts.geojson" if os.path.exists("census_tracts.geojson") else None
 
-
-if main_src is not None:
-    df_raw = load_data(main_src, _mtime=_mtime_key(main_src))
+if data_source_available(DEFAULT_PATH):
+    try:
+        df_raw = load_data(DEFAULT_PATH, _mtime=_mtime_key(DEFAULT_PATH))
+    except Exception as exc:
+        st.error(
+            f"Could not load `{DEFAULT_PATH}` from the private data repo. "
+            f"Check that `GITHUB_DATA_TOKEN` is set in Streamlit secrets "
+            f"and that the file exists in `RithikaMathew/powerbi-data`. "
+            f"Details: {exc}"
+        )
+        st.stop()
 else:
     st.info(
         f"\U0001F4C2 **Waiting on crash data.** This dashboard needs "
-        f"`{DEFAULT_PATH}` to run -- place it in the same folder as "
-        f"`dashboard.py` before launching `streamlit run dashboard.py`. "
-        f"This isn't an error, just Streamlit waiting on a file."
+        f"`{DEFAULT_PATH}` either locally or via Streamlit secret "
+        f"`GITHUB_DATA_TOKEN` (private repo `RithikaMathew/powerbi-data`). "
+        f"Add the token under App settings \u2192 Secrets, then reboot the app."
     )
     st.stop()
 
-demo_raw = load_demographics(demo_src, _mtime=_mtime_key(demo_src)) if demo_src is not None else None
-meta_raw = load_meta(meta_src, _mtime=_mtime_key(meta_src)) if meta_src is not None else None
-narrative_raw = load_narratives(narrative_src, _mtime=_mtime_key(narrative_src)) if narrative_src is not None else None
-hotspot_raw = load_hotspots(hotspot_src, _mtime=_mtime_key(hotspot_src)) if hotspot_src is not None else None
-cause_raw = load_cause_data(cause_src, _mtime=_mtime_key(cause_src)) if cause_src is not None else None
+demo_raw = try_load_csv(load_demographics, DEFAULT_DEMO_PATH)
+meta_raw = try_load_csv(load_meta, DEFAULT_META_PATH)
+narrative_raw = try_load_csv(load_narratives, DEFAULT_NARRATIVE_PATH)
+hotspot_raw = try_load_csv(load_hotspots, DEFAULT_HOTSPOT_PATH)
+cause_raw = try_load_csv(load_cause_data, DEFAULT_CAUSE_PATH)
 if cause_raw is not None:
     cause_raw = reconcile_cause_modes(cause_raw, df_raw)
 tracts_raw = load_tracts(tract_src, _mtime=_mtime_key(tract_src)) if tract_src is not None else None
@@ -1215,6 +1308,36 @@ if demo_raw is not None:
 if df.empty:
     st.warning("No crashes match the current filter combination. Try widening a filter.")
     st.stop()
+
+# ---- all-modes version of the filtered data, for When & Where's Map 3 ----
+# Every filter above still applies EXCEPT Mode -- Map 3 computes "this mode's
+# share of total micromobility crashes in this tract," which needs all three
+# modes' real counts regardless of what the sidebar's Mode filter is narrowed
+# to, or the share collapses to ~100% whenever fewer than 3 modes are selected.
+df_all_modes = df_raw[
+    df_raw["YEAR"].between(year_range[0], year_range[1])
+    & df_raw["HOUR"].between(hour_range[0], hour_range[1])
+    & df_raw["MODE"].isin(MODES)
+    & df_raw["S4_CRASH_SEVERITY"].isin(sel_severity)
+].copy()
+if sel_counties:
+    df_all_modes = df_all_modes[df_all_modes["COUNTY_NAME"].isin(sel_counties)]
+if sel_daynight != "All":
+    df_all_modes = df_all_modes[df_all_modes["DAY_NIGHT"] == sel_daynight]
+if sel_loctype != "All":
+    df_all_modes = df_all_modes[df_all_modes["LOC_TYPE"] == sel_loctype]
+if sel_crash_types:
+    df_all_modes = df_all_modes[df_all_modes[CRASH_TYPE_COL].isin(sel_crash_types)]
+if sel_road_types:
+    df_all_modes = df_all_modes[df_all_modes[ROAD_TYPE_COL].isin(sel_road_types)]
+if speed_range is not None:
+    spd_all = pd.to_numeric(df_all_modes[SPEED_COL], errors="coerce")
+    df_all_modes = df_all_modes[spd_all.between(speed_range[0], speed_range[1]) | spd_all.isna()]
+if (
+    (age_is_active_filter or gender_is_active_filter)
+    and MAIN_CRASH_ID_COL and DEMO_CRASH_ID_COL and demo_raw is not None
+):
+    df_all_modes = df_all_modes[df_all_modes[MAIN_CRASH_ID_COL].isin(matching_ids)]
 
 
 

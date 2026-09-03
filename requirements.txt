@@ -10,3 +10,4 @@ shapely>=2.0
 pyogrio>=0.7
 libpysal>=4.9
 esda>=2.5
+requests>=2.31

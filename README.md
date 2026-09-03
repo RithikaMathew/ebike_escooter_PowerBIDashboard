@@ -14,17 +14,11 @@ Live deployment: https://ebikeescooterpowerbidashboard-dpdpqduho5p45wyrmpenmq.st
 .
 ├── app.py                                              # Streamlit entry point
 ├── dashboard.py                                        # Delegates to app.py
-├── dashboard_core.py                                   # Core dashboard logic
-├── dashboard_meta.csv                                  # Pipeline funnel counts
+├── dashboard_core.py                                   # Core dashboard logic + data loading
 ├── classify_crash_cause.py                             # Crash cause classification
 ├── build_census_tracts.py                              # Builds census tract GeoJSON
 ├── eda_analysis_combined_BicycleSeparate (2).py        # Main EDA pipeline
-├── power_bi_export.csv                                 # Crash-level export
-├── power_bi_export_demographics.csv                    # Person-level demographics export
-├── spatiotemporal_hotspots_by_mode.csv                 # DBSCAN cluster output
-├── cause_analysis_export.csv                           # Crash cause analysis output
-├── narrative_text_export.csv                           # Raw narrative text
-├── census_tracts.geojson                               # Florida census tract polygons
+├── census_tracts.geojson                               # Florida census tract polygons (optional)
 ├── requirements.txt
 ├── tabs/
 │   ├── tab0_about.py
@@ -37,9 +31,10 @@ Live deployment: https://ebikeescooterpowerbidashboard-dpdpqduho5p45wyrmpenmq.st
 │   ├── tab7_narrative.py
 │   ├── tab8_causation.py
 │   └── tab9_insights.py
-├── results/figures/                                    # Static PNGs from EDA pipeline
-└── combinedSignal4/                                    # Raw Signal4 crash tables
+└── results/figures/                                    # Static PNGs from EDA pipeline
 ```
+
+Crash CSVs are **not** in this public repo. They live in the private GitHub repo [`RithikaMathew/powerbi-data`](https://github.com/RithikaMathew/powerbi-data) and are fetched at runtime.
 
 ---
 
@@ -54,7 +49,11 @@ The dashboard reads from CSVs produced by a multi-stage pipeline. Run in order:
    - `power_bi_export_demographics.csv` — person-level age/gender export
    - `dashboard_meta.csv` — pipeline funnel counts (raw → geocoded → matched → final)
    - `spatiotemporal_hotspots_by_mode.csv` — DBSCAN clusters + early/late growth
+   - `narrative_text_export.csv` — raw narrative text
+   - `cause_analysis_export.csv` — crash cause analysis output
    - `results/figures/` — static PNGs by section
+
+   Upload the CSV outputs to the private `powerbi-data` repo (keep them out of this public repo).
 
 3. **`app.py`** — Streamlit entry point (`dashboard.py` delegates here).
 
@@ -87,22 +86,52 @@ source venv/bin/activate       # Windows: venv\Scripts\activate
 pip install -r requirements.txt
 ```
 
-`requirements.txt` includes Streamlit, Plotly, and spatial dependencies: `geopandas`, `shapely`, `libpysal`, `esda`, `statsmodels`, `scipy`, `scikit-learn`.
+`requirements.txt` includes Streamlit, Plotly, `requests`, and spatial dependencies: `geopandas`, `shapely`, `libpysal`, `esda`, `statsmodels`, `scipy`, `scikit-learn`.
+
+---
+
+## Data Access (private CSVs)
+
+The dashboard loads CSVs from `RithikaMathew/powerbi-data` using a GitHub personal access token stored in Streamlit secrets — never in public code.
+
+### Streamlit Community Cloud
+
+1. Open the app’s settings → **Secrets**.
+2. Add (without deleting any existing settings):
+
+```toml
+GITHUB_DATA_TOKEN = "github_pat_..."
+```
+
+3. Save, then reboot the app.
+
+### Local development
+
+Create `.streamlit/secrets.toml` (already gitignored):
+
+```toml
+GITHUB_DATA_TOKEN = "github_pat_..."
+```
+
+If a CSV is present next to `app.py`, that local file is used instead of fetching from GitHub (useful for offline work).
+
+### Expected private-repo files
+https://github.com/RithikaMathew/powerbi-data
+
+| File | Required |
+|---|---|
+| `power_bi_export.csv` | yes |
+| `power_bi_export_demographics.csv` | optional |
+| `dashboard_meta.csv` | optional |
+| `narrative_text_export.csv` | optional |
+| `spatiotemporal_hotspots_by_mode.csv` | optional |
+| `cause_analysis_export.csv` | optional |
+
+Also optional locally: `census_tracts.geojson` (tract maps) and `results/figures/` (static PNG expanders).
 
 ---
 
 ## Running the Dashboard
-
-Place the following files next to `app.py` (or upload them via the sidebar):
-
-- `power_bi_export.csv` *(required)*
-- `power_bi_export_demographics.csv` *(optional)*
-- `dashboard_meta.csv` *(optional)*
-- `spatiotemporal_hotspots_by_mode.csv` *(optional)*
-- `census_tracts.geojson` *(optional, for tract maps)*
-- `results/figures/` folder *(optional, for static PNG expanders)*
-
-Then:
 
 ```bash
 streamlit run app.py

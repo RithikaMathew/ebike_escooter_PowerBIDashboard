@@ -196,6 +196,23 @@ if (
         # than breaking the rest of Section 9.
         county_rate_by_mode, university_county_ranks, top_tracts_by_mode = {}, {}, {}
 
+# Tracts that land in more than one mode's top-15 highest-rate list, computed
+# independently per mode -- a specific small tract recurring across modes is a
+# stronger signal than any single mode's ranking alone, and isn't visible from
+# any one choropleth (each mode's map only ever shows that mode's own colors).
+cross_mode_tracts = {}
+if top_tracts_by_mode:
+    appearances = {}
+    for m, top15 in top_tracts_by_mode.items():
+        for geoid, row in top15.iterrows():
+            appearances.setdefault(geoid, {})[m] = {
+                "crashes": int(row["crashes"]),
+                "rate": round(float(row["rate_per_100k"]), 1),
+                "county": row["county"],
+                "population": int(row["population"]),
+            }
+    cross_mode_tracts = {g: v for g, v in appearances.items() if len(v) >= 2}
+
 if len(years) >= 2:
     y0, y1 = years[0], years[-1]
     yr_counts = df.groupby(["YEAR", "MODE"], observed=True).size()
@@ -400,6 +417,7 @@ snapshot = {
     "county_concentration_by_mode": county_concentration_by_mode,
     "dow_peak_by_mode": dow_peak_by_mode,
     "university_county_ranks": university_county_ranks,
+    "cross_mode_tracts": cross_mode_tracts,
     "growth": growth,
     "hotspot_summary": hotspot_summary,
     "gi_summary": gi_summary,
@@ -722,11 +740,16 @@ Top counties by crash count (all modes blended): {county_txt}.
 """
     )
     st.caption(
-        "Note on the Empirical Bayes map: for lower-volume modes (e.g. E-Bike), the "
-        "county-fixed-effects model can fail to converge, in which case Predicted / EB "
-        "estimate / Excess crashes all show as blank or NaN for that mode -- that's a "
-        "model-fit limitation, not zero risk. Try Bicycle (highest volume) if the map "
-        "looks empty."
+        "Note on the Empirical Bayes / Gi* / Map 3 (mode-share) maps on When & Where: earlier "
+        "versions had a bug where Maps 2-5's mode selector could silently disagree with the "
+        "sidebar's Mode filter, making a mode look like it had zero real crash data (e.g. 0 hot "
+        "spots, \"Singular matrix\" EB failures, or Map 3 reading ~100% everywhere) even when "
+        "it didn't. That's now fixed: the selector reads directly from the sidebar filter, and "
+        "Map 3 independently pulls all three modes' real counts regardless of what the sidebar "
+        "is narrowed to, so it renders a genuine mode-share comparison even with a single mode "
+        "selected -- confirmed against live data for all three modes. If a blank/NaN EB result "
+        "still shows up after that fix, it reflects a genuine sparse-data convergence limit for "
+        "that mode -- try Bicycle (highest volume) as a check."
     )
 
 if county_concentration_by_mode:
@@ -822,6 +845,35 @@ if top_tracts_by_mode:
 """
         )
 
+if cross_mode_tracts:
+    recur_lines = []
+    for geoid, modes_info in sorted(cross_mode_tracts.items(), key=lambda kv: -len(kv[1])):
+        county = next(iter(modes_info.values()))["county"]
+        pop = next(iter(modes_info.values()))["population"]
+        per_mode = ", ".join(
+            f"{m} ({info['crashes']} crashes, {info['rate']:.0f}/100k)"
+            for m, info in modes_info.items()
+        )
+        recur_lines.append(
+            f"- **GEOID {geoid}** ({county}, population {pop:,}): top-15 for "
+            f"**{len(modes_info)} modes** -- {per_mode}"
+        )
+    st.markdown(
+        "**Tracts recurring across more than one mode's top-15 list, independently:**\n\n"
+        + "\n".join(recur_lines)
+        + """
+
+- **Why it matters:** each mode's top-15 ranking above is computed separately, so a
+  specific small tract landing in multiple modes' lists at once isn't something any
+  single-mode choropleth would flag -- it only shows up by cross-referencing across
+  modes, the way this section does. A small population combined with a tract number
+  in the high-9000s series (as with at least one of these) is often institutional or
+  campus land use rather than ordinary residential -- worth a manual look at what's
+  actually there before drawing conclusions, since that can't be confirmed from
+  crash data alone.
+"""
+    )
+
 if hotspot_summary:
     lines = []
     for m in MODES:
@@ -894,9 +946,13 @@ st.markdown("---")
 st.markdown("### 10. Many high-count tracts aren't spatial clusters — and some dangerous tracts sit alone")
 if gi_summary:
     st.caption(
-        "Map 4 on **When & Where** defaults to **E-Bike** (maps 2–4 mode picker). "
-        "Compare the **same mode** row below — e.g. Bicycle shows **36** High-Low outliers "
-        "while E-Bike shows **~65**, not a calculation error."
+        "Map 4 on **When & Where** now reads its mode directly from the sidebar's Mode "
+        "filter (previously a separate picker there could disagree with the sidebar and "
+        "silently corrupt the result -- see Known Limitations #8 below for that fix). If "
+        "more than one mode is selected in the sidebar, Map 4 only renders one at a time "
+        "(the first selected mode); the rows below compute every selected mode side by "
+        "side using the same underlying method, so they should always agree with Map 4 "
+        "for whichever single mode you're comparing."
     )
     gi_lines = []
     for m in MODES:
@@ -1054,6 +1110,17 @@ st.markdown(
    **not exported** to `cause_analysis_export.csv` — not recoverable in this dashboard
    without re-exporting from the classifier; treat as out of scope until the pipeline
    includes it.
+8. **Fixed: When & Where Maps 2-5 mode-selector mismatch.** Earlier versions had a
+   separate `tract_rate_mode` picker (defaulted to E-Bike) that could disagree with
+   the sidebar's Mode filter, silently feeding an all-zero column into the Gi*/EB
+   math whenever they didn't match — producing believable-looking but wrong results
+   (e.g. "0 statistically significant hot spots," EB "Singular matrix" fit failures)
+   rather than an obvious error. Fixed by removing the separate picker entirely (Maps
+   1-5 now read the mode straight from the sidebar) and by giving Map 3 its own
+   always-all-three-modes data pipeline so its mode-share % is never trivially ~100%
+   just because the sidebar is narrowed to one mode. Re-verified against live data
+   for all three modes after the fix; any Gi*/EB numbers cited elsewhere in this tab
+   reflect the corrected pipeline.
 """
 )
 

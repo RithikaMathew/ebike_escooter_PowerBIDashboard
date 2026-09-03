@@ -268,20 +268,59 @@ else:
             for c in list(MODES) + ["TOTAL_MICRO"]:
                 tract_geo[c] = tract_geo[c].fillna(0)
 
-            # Mode picker: Map 1 can be All or a single mode; maps 2–4 use a single mode.
-            map1_options = ["All modes"] + list(MODES)
-            map1_mode = st.radio(
-                "Mode for Map 1 (raw counts)",
-                map1_options, index=0,
-                horizontal=True, key="tract_map1_mode",
-            )
+            # Second, independent per-tract count table for Map 3, built from
+            # df_all_modes (all three modes always included; every OTHER filter --
+            # year, hour, severity, county, day/night, location type, crash type,
+            # road type, speed, age/gender -- still applies). Needed because
+            # tract_geo above is mode-filtered by the sidebar, which would make
+            # "{rate_mode}'s share of total micromobility" trivially ~100%
+            # whenever the sidebar itself excludes another mode.
+            tract_geo_allmodes = None
+            n_matched_allmodes = 0
+            if df_all_modes is not None:
+                geo_pts_all = df_all_modes[[LAT_COL, LON_COL, "MODE"]].copy()
+                geo_pts_all[LAT_COL] = pd.to_numeric(geo_pts_all[LAT_COL], errors="coerce")
+                geo_pts_all[LON_COL] = pd.to_numeric(geo_pts_all[LON_COL], errors="coerce")
+                geo_pts_all = geo_pts_all[
+                    geo_pts_all[LAT_COL].between(24, 31) & geo_pts_all[LON_COL].between(-88, -79)
+                ]
+                if len(geo_pts_all):
+                    pts_gdf_all = gpd.GeoDataFrame(
+                        geo_pts_all,
+                        geometry=gpd.points_from_xy(geo_pts_all[LON_COL], geo_pts_all[LAT_COL]),
+                        crs=4326,
+                    )
+                    joined_all = gpd.sjoin(
+                        pts_gdf_all, tracts_raw[["GEOID", "geometry"]], how="left", predicate="within",
+                    ).dropna(subset=["GEOID"])
+                    n_matched_allmodes = len(joined_all)
+                    if n_matched_allmodes:
+                        tract_counts_all = (
+                            joined_all.groupby(["GEOID", "MODE"], observed=True).size()
+                            .unstack(fill_value=0).reindex(columns=MODES, fill_value=0)
+                        )
+                        tract_counts_all["TOTAL_MICRO"] = tract_counts_all[MODES].sum(axis=1)
+                        tract_geo_allmodes = tracts_raw.merge(
+                            tract_counts_all.reset_index(), on="GEOID", how="left"
+                        )
+                        for c in list(MODES) + ["TOTAL_MICRO"]:
+                            tract_geo_allmodes[c] = tract_geo_allmodes[c].fillna(0)
+
+            # Mode for these tract maps comes directly from the sidebar's Mode filter --
+            # no separate picker, so this section can never show a different mode than
+            # what's actually in the filtered data (previously caused 0-hot-spot /
+            # singular-matrix EB failures when the two pickers disagreed).
+            map1_mode = "All modes" if len(sel_modes) != 1 else sel_modes[0]
             map1_col = "TOTAL_MICRO" if map1_mode == "All modes" else map1_mode
 
-            rate_mode = st.radio(
-                "Mode for maps 2–4 (per-capita rate, mode share, spatial stats, EB)",
-                MODES, index=MODES.index("E-Bike") if "E-Bike" in MODES else 0,
-                horizontal=True, key="tract_rate_mode",
-            )
+            rate_mode = sel_modes[0] if sel_modes else MODES[0]
+            if len(sel_modes) > 1:
+                st.caption(
+                    f"Maps 2–5 (per-capita rate, mode share, spatial stats, EB) show a "
+                    f"single mode at a time -- showing **{rate_mode}** (first mode in your "
+                    f"sidebar selection). Narrow the sidebar Mode filter to just one mode "
+                    f"to see a different one."
+                )
 
             # Tracts with tiny population produce wildly unstable rates -- 1 crash in a
             # 40-person tract reads as a catastrophic "per capita" rate that isn't
@@ -490,20 +529,41 @@ else:
                         f"can't compute crashes-per-capita. Check the column name in the sidebar."
                     )
 
-            st.plotly_chart(
-                choropleth(
-                    "MODE_SHARE_OF_MICRO",
-                    f"3. {rate_mode} Share of All Micromobility Crashes per Tract (%)",
-                    f"% {rate_mode}", n_matched, colorscale="Purples",
-                ),
-                width="stretch",
-            )
-            st.caption(
-                f"{rate_mode} crashes \u00f7 (bicycle + e-bike + e-scooter crashes) in that tract, "
-                f"as a %. Only meaningful where TOTAL_MICRO is non-trivial -- a tract with 1 total "
-                f"crash that happens to be a {rate_mode.lower()} crash shows 100% here, so read "
-                f"this alongside Map 1's raw count, not in isolation."
-            )
+            if tract_geo_allmodes is not None:
+                tract_geo = tract_geo.merge(
+                    tract_geo_allmodes[["GEOID"] + list(MODES) + ["TOTAL_MICRO"]].rename(
+                        columns={**{m: f"{m}_ALLMODES" for m in MODES}, "TOTAL_MICRO": "TOTAL_MICRO_ALLMODES"}
+                    ),
+                    on="GEOID", how="left",
+                )
+                tract_geo["MODE_SHARE_OF_MICRO"] = np.where(
+                    tract_geo["TOTAL_MICRO_ALLMODES"] > 0,
+                    tract_geo[f"{rate_mode}_ALLMODES"] / tract_geo["TOTAL_MICRO_ALLMODES"] * 100,
+                    np.nan,
+                )
+                st.plotly_chart(
+                    choropleth(
+                        "MODE_SHARE_OF_MICRO",
+                        f"3. {rate_mode} Share of All Micromobility Crashes per Tract (%)",
+                        f"% {rate_mode}", n_matched_allmodes, colorscale="Purples",
+                    ),
+                    width="stretch",
+                )
+                st.caption(
+                    f"{rate_mode} crashes \u00f7 (bicycle + e-bike + e-scooter crashes) in that "
+                    f"tract, as a %. This always compares against **all three modes**, regardless "
+                    f"of the sidebar's Mode filter -- otherwise narrowing the sidebar to one mode "
+                    f"would make this trivially ~100% everywhere. Only meaningful where total "
+                    f"micromobility volume is non-trivial -- a tract with 1 total crash that "
+                    f"happens to be a {rate_mode.lower()} crash still shows 100% here, so read this "
+                    f"alongside Map 1's raw count, not in isolation."
+                )
+            else:
+                st.info(
+                    "Map 3 needs the all-modes crash data to compute a real share -- unavailable "
+                    "right now (check that geocoded crashes exist for the current non-Mode filters)."
+                )
+
 
             # --- Spatiotemporal growth explorer (moved from Narrative tab) ---
             st.markdown("---")
@@ -823,13 +883,21 @@ else:
                             pred = np.asarray(res.predict())
                         return pred.ravel() if pred.ndim > 1 else pred
 
+                    def _params_reasonable(res, max_abs=15.0):
+                        # Guards against quasi-separation: a county (or intercept) dummy
+                        # whose coefficient runs away to fit a zero/near-zero cell still
+                        # produces finite predictions, so the isfinite check alone
+                        # doesn't catch it -- cap the coefficient magnitude instead.
+                        params = np.asarray(res.params, dtype=float)
+                        return np.isfinite(params).all() and np.abs(params).max() <= max_abs
+
                     def _try_nb(design, label):
                         nb = sm.NegativeBinomial(
                             y, design, exposure=exp, loglike_method="nb2",
                         )
                         res = nb.fit(disp=0, maxiter=200)
                         pred = _predict_mean(res, "negative binomial")
-                        if np.isfinite(pred).all():
+                        if np.isfinite(pred).all() and _params_reasonable(res):
                             return res, label, pred, "negative binomial"
                         return None
 
@@ -837,7 +905,7 @@ else:
                         po = sm.GLM(y, design, family=sm.families.Poisson(), exposure=exp)
                         res = po.fit(maxiter=200)
                         pred = _predict_mean(res, "poisson")
-                        if np.isfinite(pred).all():
+                        if np.isfinite(pred).all() and _params_reasonable(res):
                             return res, label, pred, "poisson"
                         return None
 

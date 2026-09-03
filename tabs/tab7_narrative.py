@@ -171,11 +171,21 @@ if "IN_QWEN_NARRATIVES" in df.columns:
                         f"(n={qval['mode_n']:,}) — Qwen class vs final S4 mode "
                         f"(`MODE_TO_QWEN_CLASS` crosswalk)."
                     )
+                elif qval.get("mode_kappa_warning"):
+                    st.caption(
+                        f"⚠️ Mode Cohen's κ not available: {qval['mode_kappa_warning']}. "
+                        f"Try widening the current filters."
+                    )
                 if qval.get("fault_kappa") is not None:
                     st.caption(
                         f"**Fault Cohen's κ = {qval['fault_kappa']:.2f}** "
                         f"(n={qval['fault_n']:,}) — manual `CRASH_GROUP` fault party vs "
                         f"causation `ATTRIBUTION`."
+                    )
+                elif qval.get("fault_kappa_warning"):
+                    st.caption(
+                        f"⚠️ Fault Cohen's κ not available: {qval['fault_kappa_warning']}. "
+                        f"Try widening the current filters."
                     )
                 with st.expander("Crosswalk tables (manual mappings)", expanded=False):
                     st.markdown("**Qwen mode ↔ S4 MODE**")

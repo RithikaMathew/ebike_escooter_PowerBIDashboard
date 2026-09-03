@@ -3,6 +3,7 @@ venv/
 env/
 __pycache__/
 *.pyc
+*.csv
 
 # Node.js (if report.js/package.json turn out to be unrelated to this project,
 # consider removing them from the repo entirely rather than just ignoring them)
