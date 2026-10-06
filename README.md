@@ -30,9 +30,12 @@ Live deployment: https://ebikeescooterpowerbidashboard-dpdpqduho5p45wyrmpenmq.st
 │   ├── tab6_demographics.py
 │   ├── tab7_narrative.py
 │   ├── tab8_causation.py
-│   └── tab9_insights.py
+│   ├── tab9_insights.py
+│   └── tab10_flhsmv.py
 └── results/figures/                                    # Static PNGs from EDA pipeline
 ```
+
+The LLM vs FLHSMV tab reads `results/flhsmv_comparison.json` (aggregates only, no narratives). Rebuild it with `python build_flhsmv_comparison.py ebike_llm_vs_flhsmv_combined.xlsx`; the workbook itself stays local.
 
 Crash CSVs are **not** in this public repo. They live in the private GitHub repo [`RithikaMathew/powerbi-data`](https://github.com/RithikaMathew/powerbi-data) and are fetched at runtime.
 
@@ -155,6 +158,7 @@ The dashboard degrades gracefully — tabs and sections that depend on missing o
 | **Narrative** | Crash narrative text mining and contributing factors |
 | **Causation** | Crash cause classification and model outputs |
 | **Insights** | Integrated findings and cross-tab analysis |
+| **LLM vs FLHSMV** | Agreement, kappa, precision/recall, disagreement types, coverage, agency and trend views comparing the LLM e-bike/e-scooter label with FLHSMV's e-bike likelihood label (fixed sample, ignores sidebar filters) |
 
 ### When & Where tab — map and hotspot layers
 

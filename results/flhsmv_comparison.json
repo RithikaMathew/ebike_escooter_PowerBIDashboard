@@ -1,0 +1,1187 @@
+{
+ "schema": 2,
+ "generated": "2026-10-03",
+ "source_workbook": "ebike_llm_vs_flhsmv_combined__1_.xlsx",
+ "load_dt_range": [
+  "2023-01-01",
+  "2026-05-07"
+ ],
+ "labels": [
+  "Definitely",
+  "Highly Likely",
+  "Likely",
+  "Less Likely",
+  "Not Likely"
+ ],
+ "preds": [
+  "E-bike",
+  "E-scooter",
+  "Bicyclist",
+  "Other"
+ ],
+ "kpis": {
+  "ids_total": 20769,
+  "matched": 13248,
+  "unmatched": 7521,
+  "match_rate": 63.8,
+  "strict": {
+   "agree": 48.8,
+   "kappa": 0.121
+  },
+  "lenient": {
+   "agree": 80.1,
+   "kappa": 0.394
+  },
+  "precision": 99.7,
+  "recall": 78.3,
+  "f1": 87.7,
+  "pos_n": 12008,
+  "neg_n": 1240,
+  "flhsmv_pos_rate": 90.6,
+  "llm_pos_rate": 71.2,
+  "n_miss": 28,
+  "n_esc": 4084,
+  "n_blind": 696,
+  "n_pos_other": 1754,
+  "n_pos_bic": 848,
+  "n_bic_other": 152,
+  "hidden_pct": 2.3,
+  "fix_upper": 85.4,
+  "dup_matched_ids": 964,
+  "conflicting": 107,
+  "un_pos": 2465,
+  "disagree_lenient": 2630,
+  "overall_dis": 21.7,
+  "blind_conf": 0.95,
+  "agency_min": 100
+ },
+ "crosstab": {
+  "Definitely": {
+   "E-bike": 2852,
+   "E-scooter": 1108,
+   "Bicyclist": 704,
+   "Other": 516
+  },
+  "Highly Likely": {
+   "E-bike": 2390,
+   "E-scooter": 2976,
+   "Bicyclist": 40,
+   "Other": 614
+  },
+  "Likely": {
+   "E-bike": 5,
+   "E-scooter": 75,
+   "Bicyclist": 104,
+   "Other": 624
+  },
+  "Less Likely": {
+   "E-bike": 24,
+   "E-scooter": 3,
+   "Bicyclist": 1072,
+   "Other": 42
+  },
+  "Not Likely": {
+   "E-bike": 1,
+   "E-scooter": 0,
+   "Bicyclist": 55,
+   "Other": 43
+  }
+ },
+ "label_totals": {
+  "Definitely": 5180,
+  "Highly Likely": 6020,
+  "Likely": 808,
+  "Less Likely": 1141,
+  "Not Likely": 99
+ },
+ "ladder": {
+  "Definitely": {
+   "lenient": 76.4,
+   "strict": 55.1,
+   "credited": 89.9
+  },
+  "Highly Likely": {
+   "lenient": 89.1,
+   "strict": 39.7,
+   "credited": 89.1
+  },
+  "Likely": {
+   "lenient": 9.9,
+   "strict": 0.6,
+   "credited": 9.9
+  },
+  "Less Likely": {
+   "lenient": 2.4,
+   "strict": 2.1,
+   "credited": 2.4
+  },
+  "Not Likely": {
+   "lenient": 1.0,
+   "strict": 1.0,
+   "credited": 1.0
+  }
+ },
+ "llm_pos_share": {
+  "E-bike": {
+   "n": 5272,
+   "pos": 5247,
+   "pct": 99.5
+  },
+  "E-scooter": {
+   "n": 4162,
+   "pos": 4159,
+   "pct": 99.9
+  },
+  "Bicyclist": {
+   "n": 1975,
+   "pos": 848,
+   "pct": 42.9
+  },
+  "Other": {
+   "n": 1839,
+   "pos": 1754,
+   "pct": 95.4
+  }
+ },
+ "breakdown": [
+  {
+   "case": "E-scooter scope difference",
+   "ids": 4084,
+   "kind": "scope",
+   "view": "strict only",
+   "desc": "FLHSMV rated it Definitely/Highly Likely an e-bike crash; the LLM named an e-scooter."
+  },
+  {
+   "case": "LLM blind spot (property field)",
+   "ids": 696,
+   "kind": "llm",
+   "view": "both",
+   "desc": "FLHSMV Definitely; the LLM said regular bicycle, but the property-damage field says electric bicycle."
+  },
+  {
+   "case": "FLHSMV-positive, LLM Other",
+   "ids": 1754,
+   "kind": "disputed",
+   "view": "both",
+   "desc": "FLHSMV rated Likely or higher; the LLM's rules sent it to Other (motorcycle-type, unclear or missing device, and so on)."
+  },
+  {
+   "case": "FLHSMV-positive, LLM Bicyclist (not blind spot)",
+   "ids": 152,
+   "kind": "disputed",
+   "view": "both",
+   "desc": "FLHSMV rated Likely or higher; the LLM said regular bicycle and the property field does not explain it."
+  },
+  {
+   "case": "FLHSMV misses",
+   "ids": 28,
+   "kind": "flhsmv",
+   "view": "both",
+   "desc": "FLHSMV rated Less/Not Likely; the LLM found an e-bike or e-scooter."
+  }
+ ],
+ "sheets": {
+  "EBike": {
+   "ids": 15953,
+   "matched": 12009,
+   "pos": 12007,
+   "llm_pos": 9408,
+   "agree": 9406,
+   "agree_pct": 78.3,
+   "match_rate": 75.3
+  },
+  "RegBike": {
+   "ids": 4816,
+   "matched": 1239,
+   "pos": 1,
+   "llm_pos": 26,
+   "agree": 1212,
+   "agree_pct": 97.8,
+   "match_rate": 25.7
+  }
+ },
+ "unmatched_by_sheet": {
+  "EBike": {
+   "E-bike": 1261,
+   "E-scooter": 1196,
+   "Bicyclist": 481,
+   "Other": 1006
+  },
+  "RegBike": {
+   "E-bike": 8,
+   "E-scooter": 0,
+   "Bicyclist": 3188,
+   "Other": 381
+  }
+ },
+ "id_series": [
+  {
+   "series": "Starts with 21-24",
+   "ids": 1764,
+   "matched": 234,
+   "unmatched": 1530,
+   "match_rate": 13.3
+  },
+  {
+   "series": "Starts with 25-28",
+   "ids": 14020,
+   "matched": 12355,
+   "unmatched": 1665,
+   "match_rate": 88.1
+  },
+  {
+   "series": "Starts with 80-90",
+   "ids": 4985,
+   "matched": 659,
+   "unmatched": 4326,
+   "match_rate": 13.2
+  }
+ ],
+ "id_prefixes": [
+  {
+   "prefix": "21",
+   "ids": 1,
+   "matched": 0,
+   "match_rate": 0.0
+  },
+  {
+   "prefix": "24",
+   "ids": 1763,
+   "matched": 234,
+   "match_rate": 13.3
+  },
+  {
+   "prefix": "25",
+   "ids": 3137,
+   "matched": 2467,
+   "match_rate": 78.6
+  },
+  {
+   "prefix": "26",
+   "ids": 4570,
+   "matched": 4425,
+   "match_rate": 96.8
+  },
+  {
+   "prefix": "27",
+   "ids": 5941,
+   "matched": 5273,
+   "match_rate": 88.8
+  },
+  {
+   "prefix": "28",
+   "ids": 372,
+   "matched": 190,
+   "match_rate": 51.1
+  },
+  {
+   "prefix": "80",
+   "ids": 5,
+   "matched": 1,
+   "match_rate": 20.0
+  },
+  {
+   "prefix": "81",
+   "ids": 24,
+   "matched": 0,
+   "match_rate": 0.0
+  },
+  {
+   "prefix": "82",
+   "ids": 64,
+   "matched": 12,
+   "match_rate": 18.8
+  },
+  {
+   "prefix": "83",
+   "ids": 99,
+   "matched": 13,
+   "match_rate": 13.1
+  },
+  {
+   "prefix": "84",
+   "ids": 373,
+   "matched": 29,
+   "match_rate": 7.8
+  },
+  {
+   "prefix": "85",
+   "ids": 621,
+   "matched": 12,
+   "match_rate": 1.9
+  },
+  {
+   "prefix": "86",
+   "ids": 662,
+   "matched": 15,
+   "match_rate": 2.3
+  },
+  {
+   "prefix": "87",
+   "ids": 739,
+   "matched": 7,
+   "match_rate": 0.9
+  },
+  {
+   "prefix": "88",
+   "ids": 912,
+   "matched": 36,
+   "match_rate": 3.9
+  },
+  {
+   "prefix": "89",
+   "ids": 1442,
+   "matched": 532,
+   "match_rate": 36.9
+  },
+  {
+   "prefix": "90",
+   "ids": 44,
+   "matched": 2,
+   "match_rate": 4.5
+  }
+ ],
+ "zip_window": [
+  "2023-01-01",
+  "2026-05-07"
+ ],
+ "crash_year_check": null,
+ "quarters": [
+  {
+   "q": "2023 Q1",
+   "n": 411,
+   "c": 302,
+   "pct": 73.5
+  },
+  {
+   "q": "2023 Q2",
+   "n": 460,
+   "c": 339,
+   "pct": 73.7
+  },
+  {
+   "q": "2023 Q3",
+   "n": 447,
+   "c": 313,
+   "pct": 70.0
+  },
+  {
+   "q": "2023 Q4",
+   "n": 556,
+   "c": 406,
+   "pct": 73.0
+  },
+  {
+   "q": "2024 Q1",
+   "n": 614,
+   "c": 457,
+   "pct": 74.4
+  },
+  {
+   "q": "2024 Q2",
+   "n": 764,
+   "c": 583,
+   "pct": 76.3
+  },
+  {
+   "q": "2024 Q3",
+   "n": 705,
+   "c": 534,
+   "pct": 75.7
+  },
+  {
+   "q": "2024 Q4",
+   "n": 820,
+   "c": 639,
+   "pct": 77.9
+  },
+  {
+   "q": "2025 Q1",
+   "n": 959,
+   "c": 743,
+   "pct": 77.5
+  },
+  {
+   "q": "2025 Q2",
+   "n": 1152,
+   "c": 919,
+   "pct": 79.8
+  },
+  {
+   "q": "2025 Q3",
+   "n": 1167,
+   "c": 944,
+   "pct": 80.9
+  },
+  {
+   "q": "2025 Q4",
+   "n": 1433,
+   "c": 1114,
+   "pct": 77.7
+  },
+  {
+   "q": "2026 Q1",
+   "n": 1684,
+   "c": 1414,
+   "pct": 84.0
+  },
+  {
+   "q": "2026 Q2",
+   "n": 835,
+   "c": 699,
+   "pct": 83.7
+  }
+ ],
+ "agencies": [
+  {
+   "agency": "Florida Highway Patrol",
+   "positives": 2061,
+   "disagree_pct": 46.6,
+   "blind_spot": 384,
+   "escooter_pct": 23.0
+  },
+  {
+   "agency": "Hollywood Police Department",
+   "positives": 227,
+   "disagree_pct": 41.4,
+   "blind_spot": 22,
+   "escooter_pct": 38.3
+  },
+  {
+   "agency": "Jacksonville Sheriff's Office",
+   "positives": 257,
+   "disagree_pct": 37.0,
+   "blind_spot": 31,
+   "escooter_pct": 21.4
+  },
+  {
+   "agency": "Miami-Dade PD",
+   "positives": 297,
+   "disagree_pct": 30.6,
+   "blind_spot": 9,
+   "escooter_pct": 55.6
+  },
+  {
+   "agency": "St. Petersburg Police Department",
+   "positives": 200,
+   "disagree_pct": 27.0,
+   "blind_spot": 8,
+   "escooter_pct": 28.0
+  },
+  {
+   "agency": "Delray Beach Police Department",
+   "positives": 113,
+   "disagree_pct": 25.7,
+   "blind_spot": 19,
+   "escooter_pct": 30.1
+  },
+  {
+   "agency": "Miami-Dade SO",
+   "positives": 215,
+   "disagree_pct": 24.7,
+   "blind_spot": 6,
+   "escooter_pct": 52.6
+  },
+  {
+   "agency": "Miami Beach PD",
+   "positives": 309,
+   "disagree_pct": 22.3,
+   "blind_spot": 22,
+   "escooter_pct": 59.9
+  },
+  {
+   "agency": "Fort Lauderdale Police Department",
+   "positives": 178,
+   "disagree_pct": 21.9,
+   "blind_spot": 6,
+   "escooter_pct": 47.8
+  },
+  {
+   "agency": "Largo Police Department",
+   "positives": 187,
+   "disagree_pct": 19.3,
+   "blind_spot": 13,
+   "escooter_pct": 11.2
+  },
+  {
+   "agency": "Coral Springs Police Department",
+   "positives": 113,
+   "disagree_pct": 17.7,
+   "blind_spot": 1,
+   "escooter_pct": 55.8
+  },
+  {
+   "agency": "Palm Beach County Sheriff's Office",
+   "positives": 401,
+   "disagree_pct": 17.5,
+   "blind_spot": 2,
+   "escooter_pct": 38.9
+  },
+  {
+   "agency": "Hillsborough County Sheriff's Office",
+   "positives": 464,
+   "disagree_pct": 17.2,
+   "blind_spot": 28,
+   "escooter_pct": 32.1
+  },
+  {
+   "agency": "Gainesville Police Department",
+   "positives": 131,
+   "disagree_pct": 16.8,
+   "blind_spot": 2,
+   "escooter_pct": 53.4
+  },
+  {
+   "agency": "Broward County Sheriff's Office",
+   "positives": 453,
+   "disagree_pct": 15.7,
+   "blind_spot": 9,
+   "escooter_pct": 49.7
+  },
+  {
+   "agency": "West Palm Beach Police Department",
+   "positives": 105,
+   "disagree_pct": 15.2,
+   "blind_spot": 2,
+   "escooter_pct": 33.3
+  },
+  {
+   "agency": "Orlando Police Department",
+   "positives": 233,
+   "disagree_pct": 13.7,
+   "blind_spot": 0,
+   "escooter_pct": 42.9
+  },
+  {
+   "agency": "Tallahassee Police Department",
+   "positives": 101,
+   "disagree_pct": 12.9,
+   "blind_spot": 0,
+   "escooter_pct": 48.5
+  },
+  {
+   "agency": "Lee County Sheriff's Office",
+   "positives": 215,
+   "disagree_pct": 12.1,
+   "blind_spot": 2,
+   "escooter_pct": 14.9
+  },
+  {
+   "agency": "Collier County Sheriff's Office",
+   "positives": 201,
+   "disagree_pct": 10.9,
+   "blind_spot": 2,
+   "escooter_pct": 18.4
+  },
+  {
+   "agency": "Tampa Police Department",
+   "positives": 289,
+   "disagree_pct": 9.3,
+   "blind_spot": 1,
+   "escooter_pct": 32.5
+  },
+  {
+   "agency": "Sarasota County Sheriff's Office",
+   "positives": 156,
+   "disagree_pct": 9.0,
+   "blind_spot": 4,
+   "escooter_pct": 16.7
+  },
+  {
+   "agency": "Clearwater Police Department",
+   "positives": 170,
+   "disagree_pct": 7.6,
+   "blind_spot": 1,
+   "escooter_pct": 17.6
+  },
+  {
+   "agency": "Miami Police Department",
+   "positives": 542,
+   "disagree_pct": 6.6,
+   "blind_spot": 2,
+   "escooter_pct": 65.5
+  },
+  {
+   "agency": "Port St. Lucie Police Department",
+   "positives": 132,
+   "disagree_pct": 6.1,
+   "blind_spot": 2,
+   "escooter_pct": 22.7
+  },
+  {
+   "agency": "Key West Police Department",
+   "positives": 109,
+   "disagree_pct": 5.5,
+   "blind_spot": 5,
+   "escooter_pct": 13.8
+  }
+ ],
+ "forms": [
+  {
+   "form": "L",
+   "n": 11418,
+   "agree": 9160,
+   "pct": 80.2
+  },
+  {
+   "form": "S",
+   "n": 791,
+   "agree": 619,
+   "pct": 78.3
+  },
+  {
+   "form": "U",
+   "n": 1023,
+   "agree": 825,
+   "pct": 80.6
+  },
+  {
+   "form": "V",
+   "n": 16,
+   "agree": 14,
+   "pct": 87.5
+  }
+ ],
+ "rules": [
+  {
+   "code": "R9",
+   "ids": 547,
+   "share": 31.2,
+   "definition": "\"Scooter\" on its own with no power wording, brand, posture or speed, or a \"stand-up scooter\" with no motor/electric wording (could be a kick scooter) -> Other.",
+   "trigger_pct": 100.0,
+   "top_terms": [
+    {
+     "term": "scooter",
+     "pct": 100.0
+    }
+   ]
+  },
+  {
+   "code": "RC3",
+   "ids": 442,
+   "share": 25.2,
+   "definition": "No device named at all (pedestrian only, no vehicle described, or only a bike lane or path mentioned) -> Other.",
+   "trigger_pct": 100.0,
+   "top_terms": [
+    {
+     "term": "no device named",
+     "pct": 94.0
+    }
+   ]
+  },
+  {
+   "code": "R8",
+   "ids": 387,
+   "share": 22.1,
+   "definition": "\"Motorized scooter\" or \"motor scooter\" on its own (no standing posture, brand or speed of 15 mph or more), or a seated motorized scooter (could be a gas moped) -> Other.",
+   "trigger_pct": 93.0,
+   "top_terms": [
+    {
+     "term": "scooter",
+     "pct": 99.0
+    },
+    {
+     "term": "motorized",
+     "pct": 91.0
+    }
+   ]
+  },
+  {
+   "code": "R12",
+   "ids": 95,
+   "share": 5.4,
+   "definition": "Electric devices that are neither e-bike nor e-scooter (electric unicycle, hoverboard, electric or motorized skateboard, motorized wheelchair, toy bike, electric dirt bike) -> Other.",
+   "trigger_pct": 71.0,
+   "top_terms": [
+    {
+     "term": "dirt bike",
+     "pct": 41.0
+    },
+    {
+     "term": "wheelchair / mobility",
+     "pct": 23.0
+    },
+    {
+     "term": "hoverboard / skateboard / similar",
+     "pct": 23.0
+    }
+   ]
+  },
+  {
+   "code": "R11",
+   "ids": 74,
+   "share": 4.2,
+   "definition": "Gas-powered or moped-class devices (moped, motorcycle, minibike, \"cc\", \"engine\", Vespa and similar) -> Other.",
+   "trigger_pct": 26.0,
+   "top_terms": [
+    {
+     "term": "scooter",
+     "pct": 72.0
+    },
+    {
+     "term": "wheelchair / mobility",
+     "pct": 53.0
+    },
+    {
+     "term": "motorized",
+     "pct": 23.0
+    }
+   ]
+  },
+  {
+   "code": "RC1",
+   "ids": 65,
+   "share": 3.7,
+   "definition": "Two or more device classes in the same narrative (for example e-bike and e-scooter, or scooter and bicycle) -> Other.",
+   "trigger_pct": 48.0,
+   "top_terms": [
+    {
+     "term": "scooter",
+     "pct": 74.0
+    },
+    {
+     "term": "e-bike wording",
+     "pct": 40.0
+    }
+   ]
+  },
+  {
+   "code": "R14",
+   "ids": 51,
+   "share": 2.9,
+   "definition": "Human-power override: wording such as foot powered, manual, non-motorized or non-electric -> Other, even if a brand name appears.",
+   "trigger_pct": 45.0,
+   "top_terms": [
+    {
+     "term": "scooter",
+     "pct": 86.0
+    },
+    {
+     "term": "wheelchair / mobility",
+     "pct": 29.0
+    },
+    {
+     "term": "motorized",
+     "pct": 22.0
+    }
+   ]
+  },
+  {
+   "code": "RC2",
+   "ids": 37,
+   "share": 2.1,
+   "definition": "Slash ambiguity such as \"ebike/escooter\" or \"bicycle/scooter\" -> Other.",
+   "trigger_pct": 97.0,
+   "top_terms": [
+    {
+     "term": "scooter",
+     "pct": 84.0
+    },
+    {
+     "term": "e-bike wording",
+     "pct": 38.0
+    }
+   ]
+  },
+  {
+   "code": "R13",
+   "ids": 27,
+   "share": 1.5,
+   "definition": "Catch-all for ambiguous or unidentifiable devices (\"bike\" alone with power clues, \"scooter\" alone, pedestrian only, skateboard, ATV, go-kart, no device named, and similar) -> Other.",
+   "trigger_pct": null,
+   "top_terms": [
+    {
+     "term": "scooter",
+     "pct": 63.0
+    },
+    {
+     "term": "motorized",
+     "pct": 22.0
+    }
+   ]
+  },
+  {
+   "code": "R12c",
+   "ids": 13,
+   "share": 0.7,
+   "definition": "Wheel-count override: a 3- or 4-wheel scooter -> Other.",
+   "trigger_pct": 92.0,
+   "top_terms": [
+    {
+     "term": "scooter",
+     "pct": 92.0
+    },
+    {
+     "term": "wheelchair / mobility",
+     "pct": 31.0
+    }
+   ]
+  },
+  {
+   "code": "R11b",
+   "ids": 8,
+   "share": 0.5,
+   "definition": "Electric moped (a separate Florida vehicle class, not an e-bike) -> Other.",
+   "trigger_pct": 50.0,
+   "top_terms": [
+    {
+     "term": "motorcycle / moped",
+     "pct": 88.0
+    }
+   ]
+  },
+  {
+   "code": "R4",
+   "ids": 8,
+   "share": 0.5,
+   "definition": "\"Motorized bicycle\" with gas evidence, or on its own (power type unknown) -> Other.",
+   "trigger_pct": 100.0,
+   "top_terms": [
+    {
+     "term": "motorized",
+     "pct": 100.0
+    },
+    {
+     "term": "motorized bicycle",
+     "pct": 100.0
+    }
+   ]
+  }
+ ],
+ "rules_total": 1754,
+ "rules_multi_device": 633,
+ "flhsmv_defs": [
+  {
+   "label": "Definitely",
+   "definition": "The crash report definitely involves an E-Bike or E-Scooter. Variations of the two are explicitly mentioned in the Narrative or Property Damage fields.",
+   "reports": 5180
+  },
+  {
+   "label": "Highly Likely",
+   "definition": "Highly likely to involve an E-Bike or E-Scooter. Key words such as \"Electric\", \"Bike\" and \"Scooter\" are used in conjunction with each other multiple times in the Narrative or Property Damage fields.",
+   "reports": 6020
+  },
+  {
+   "label": "Likely",
+   "definition": "Possibly contains an e-bike or e-scooter. Key words such as \"Electric\" and \"Motorized\" appear once.",
+   "reports": 808
+  },
+  {
+   "label": "Less Likely",
+   "definition": "A \"Bike\" or \"Scooter\" is mentioned, but there is no explicit reference to motorization.",
+   "reports": 1141
+  },
+  {
+   "label": "Not Likely",
+   "definition": "No key words are referenced, but property damage is reported. Some reports may have slipped by.",
+   "reports": 99
+  },
+  {
+   "label": "Not Enough Information",
+   "definition": "No key words are referenced and no property damage is reported, so there is not enough information to categorize.",
+   "reports": 0
+  }
+ ],
+ "labels_unexpected": [],
+ "confidence": {
+  "E-bike": 0.95,
+  "E-scooter": 0.946,
+  "Bicyclist": 0.95,
+  "Other": 0.774
+ },
+ "bottom_line": "The LLM and FLHSMV tell broadly the same story, and most differences trace back to how each is defined. FLHSMV's ratings are keyword-based (\"electric\", \"bike\", \"scooter\", \"motorized\"), look at both the narrative and the property-damage field, and group e-bikes and e-scooters together. The LLM reads only the narrative and needs explicit evidence of both the device and its electric power before it will say e-bike or e-scooter. So when the LLM does name one, FLHSMV had already rated it likely 99.7% of the time. The gaps come from three places: the LLM was never shown the property-damage column, where officers often wrote \"electric bicycle\" (696 reports); the LLM's rules deliberately send vague wording (a bare \"scooter\" or \"bike\", \"motorized scooter\" alone, several devices at once, no device) to \"Other\" where FLHSMV's keywords gave a likely rating (1,754 reports); and the LLM separates e-scooters from e-bikes while FLHSMV does not (4,084 reports, a disagreement only under the strict view). A small group (28) went the other way: FLHSMV rated them unlikely, yet the narrative describes an e-bike or e-scooter. Neither source is treated as the final truth; settling the disputed cases would take a human review.",
+ "insights": [
+  {
+   "title": "When the LLM spots an e-bike or e-scooter, FLHSMV almost always agrees",
+   "text": "Of every 9,434 reports the LLM called an e-bike or e-scooter, FLHSMV had rated all but a handful as at least \"Likely\". So the LLM's positive calls are very dependable. Its weakness is the other direction: it recovers about 78.3% of the reports FLHSMV rated likely, because it is stricter about what counts.",
+   "evidence": "Precision 99.7%, recall 78.3%, F1 87.7% (FLHSMV treated as the reference)."
+  },
+  {
+   "title": "Much of the \"disagreement\" is a difference in definition, not a mistake",
+   "text": "FLHSMV's own rating definition covers \"an E-Bike or E-Scooter\" together, so the LLM's e-scooter calls are consistent with it. The LLM keeps them separate, following the Florida legal split (an e-bike has pedals and a motor; an e-scooter has no pedals). That is why the comparison jumps from 48.8% (strict, only LLM E-bike counts) to 80.1% (lenient, E-bike or E-scooter counts). The lenient figure is the like-for-like one. In 30% of these cases FLHSMV's own property-damage field also says \"scooter\".",
+   "evidence": "4,084 reports FLHSMV rated Definitely/Highly Likely that the LLM called E-scooter; 1,238 mention a scooter in the property-damage field."
+  },
+  {
+   "title": "The LLM was blind to a column that held the answer",
+   "text": "The LLM read the crash narrative but was not given the property-damage field (TYPE_PROPERTY_DAMAGE). In 696 reports FLHSMV rated the crash \"Definitely\" an e-bike, the narrative did not mention a motor (true for 694 of them), and the property field said things like \"electric bicycle\". The LLM called these regular bicycles with high confidence. Here FLHSMV is right and the LLM simply lacked the information. Giving the LLM that column would likely lift agreement to about 85.4%.",
+   "evidence": "696 reports; 694 of them say the narrative mentions no power source; best case agreement 80.1% to about 85.4%."
+  },
+  {
+   "title": "FLHSMV's \"Likely\" rating is loose; its top two ratings are solid",
+   "text": "The LLM confirms most \"Highly Likely\" reports (89.1%) and, once the blind spot is credited, most \"Definitely\" reports (89.9%). \"Likely\" is different: the LLM confirms only 9.9% and calls 77% of them \"Other\". FLHSMV defines \"Likely\" as keywords such as \"electric\" or \"motorized\" appearing just once, a weaker standard than the LLM's requirement for explicit evidence of both the device and its electric power. Counting \"Likely\" as a yes therefore adds many reports that are questionable.",
+   "evidence": "Share the LLM confirms: Definitely 76.4% (89.9% with blind spot credited), Highly Likely 89.1%, Likely 9.9%."
+  },
+  {
+   "title": "Where the LLM says \"Other\", it is usually following a rule not to guess",
+   "text": "For 1,754 reports FLHSMV rated likely but the LLM said \"Other\". The LLM's prompt tells it to answer \"Other\" whenever the device or its power type is unclear: a bare \"scooter\" or \"bike\", \"motorized scooter\" on its own (it could be gas-powered), several devices in one report, or no device at all. About 78% fall under just three of those rules. FLHSMV's keyword criteria, by contrast, can reach a likely rating from a single \"motorized\" or \"electric\". Keyword matching can also pick up incidental mentions, for example 2 reports where the narrative mentions a scooter lift or carrier on a vehicle. In many of these FLHSMV may be right and the LLM too cautious, but the data cannot say which; a human review of a sample would settle it.",
+   "evidence": "1,754 reports (14.6% of FLHSMV positives); see the rule table."
+  },
+  {
+   "title": "FLHSMV occasionally rates a real e-bike as unlikely",
+   "text": "In 28 reports FLHSMV said \"Less Likely\" or \"Not Likely\", yet the narrative describes an e-bike (25) or e-scooter (3). Almost all (26 of 28) sit in the regular-bike file. That is only 2.3% of everything FLHSMV rated unlikely, so FLHSMV's low ratings are mostly reliable, but the LLM could help catch the few it misses.",
+   "evidence": "28 reports; mean LLM confidence 0.94."
+  },
+  {
+   "title": "The two sources disagree more for some agencies than others",
+   "text": "Among agencies with at least 100 FLHSMV-positive reports, the LLM disagrees most often for Florida Highway Patrol (46.6%), Hollywood Police Department (41.4%) and Jacksonville Sheriff's Office (37.0%), and least for Key West Police Department (5.5%). Part of the gap is where an agency records \"electric\": for Florida Highway Patrol, 40% of its disagreements are the property-field blind spot, which would shrink its rate from 46.6% to about 27.9%.",
+   "evidence": "Overall, the LLM disagrees with 21.7% of FLHSMV-positive reports."
+  },
+  {
+   "title": "The LLM sounds equally sure when it is right and when it lacks information",
+   "text": "Its self-reported confidence is about 0.95 for Bicyclist, E-bike and E-scooter, and lower (0.77) for \"Other\", so low confidence does point to ambiguous reports. But it cannot catch the blind spot: those 696 reports were all labeled at 0.95. Confidence is a useful flag for \"Other\", not a safety net.",
+   "evidence": "Mean confidence: Bicyclist 0.95, E-bike 0.95, E-scooter 0.95, Other 0.77."
+  },
+  {
+   "title": "The share of FLHSMV-positive reports the LLM confirms has risen over time",
+   "text": "In the e-bike file, the LLM confirmed 73.5% of FLHSMV-positive reports in 2023 Q1 and 83.7% in 2026 Q2 (a partial quarter), with a low of 70.0% in 2023 Q3. The data cannot say why: narratives may have become more explicit, FLHSMV coding may have changed, or the mix of e-scooters may have shifted.",
+   "evidence": "2023 Q1: 73.5%; 2026 Q2: 83.7%."
+  }
+ ],
+ "misc": [
+  {
+   "theme": "Coverage",
+   "text": "Of 20,769 unique REPORT_NUMBERs (15,953 in the e-bike file, 4,816 in the regular-bike file, no overlap), 13,248 (63.8%) were found in the FLHSMV files and 7,521 (36.2%) were not. Match rate is 75.3% for the e-bike file and 25.7% for the regular-bike file.",
+   "figure": "13,248 matched / 7,521 unmatched"
+  },
+  {
+   "theme": "Why IDs are unmatched",
+   "text": "The unmatched IDs are clean 8-digit numbers that simply do not appear in the FLHSMV files, so this is not a formatting problem. They cluster in two places: IDs starting with 80 to 90 (4,326 unmatched, only 13.2% found) and IDs starting with 21 to 24 (1,530 unmatched, 13.3% found), against 88.1% found for IDs starting with 25 to 28. The FLHSMV records that did match were loaded between 2023-01-01 and 2026-05-07, so crashes outside that window could be absent. Whether the two sources cover different years cannot be tested from this workbook, because unmatched rows carry no FLHSMV date. The cause is therefore not confirmed; rerunning the build script with power_bi_export.csv adds a crash-year check.",
+   "figure": "80-90 series 13.2% found; 21-24 series 13.3%; 25-28 series 88.1%"
+  },
+  {
+   "theme": "Unmatched reports that still look like e-bikes",
+   "text": "Among the 7,521 unmatched IDs, 2,465 (32.8%) are ones the LLM called E-bike or E-scooter. These crashes exist in the LLM data but cannot be compared with FLHSMV. The FLHSMV files may be a partial extract, so confirm before calling these FLHSMV omissions.",
+   "figure": "2,465 (32.8% of unmatched)"
+  },
+  {
+   "theme": "Sample design",
+   "text": "The two files are almost pure slices of the FLHSMV rating. In the e-bike file, 12,007 of 12,009 matched IDs are FLHSMV-positive; in the regular-bike file, 1,238 of 1,239 are FLHSMV-negative. Agreement is 78.3% in the first and 97.8% in the second, and the 80.1% headline blends them. These numbers describe this sample, not all Florida e-bike crashes.",
+   "figure": "78.3% / 97.8%"
+  },
+  {
+   "theme": "Duplicate rows",
+   "text": "The FLHSMV files repeat some REPORT_NUMBERs (for example a crash with both an L and a U form). 964 matched IDs have more than one row (909 have both an L and a U form), and 107 of them carry different FLHSMV ratings. The workbook's Joined sheets keep every row (17,061 and 4,946 rows; 1,238 extra). Everything on this tab uses one row per ID, keeping the highest FLHSMV rating.",
+   "figure": "964 IDs with duplicates"
+  },
+  {
+   "theme": "Form type",
+   "text": "Agreement is similar across FLHSMV form types: 80.2% for L, 80.6% for U, 78.3% for S (V has only 16 IDs), so form type does not explain the disagreement.",
+   "figure": "L 80.2% / U 80.6% / S 78.3%"
+  },
+  {
+   "theme": "Agreement statistics",
+   "text": "Cohen's kappa corrects agreement for chance. It is 0.12 for the strict definition and 0.39 when e-scooters count. It is low even at 80.1% agreement because FLHSMV rates 90.6% of matched reports positive while the LLM rates 71.2%, and because the sample is built from two slices of the FLHSMV rating.",
+   "figure": "k 0.12 / 0.39"
+  },
+  {
+   "theme": "E-scooters by agency",
+   "text": "E-scooter cases are concentrated in a few agencies: Florida Highway Patrol (461), Miami Police Department (354), Broward County Sheriff's Office (221), Miami Beach PD (180), Palm Beach County Sheriff's Office (155). At Miami Police Department about 66% of FLHSMV-positive reports are E-scooter, yet its disagreement rate is only 6.6% because e-scooters count as a match there; under the strict definition it would look very different.",
+   "figure": "Miami PD ~66% E-scooter"
+  }
+ ],
+ "examples": [
+  {
+   "id": "27371310",
+   "category": "FLHSMV missed, LLM found",
+   "agency": "Citrus County Sheriff's Office",
+   "flhsmv": "Less Likely",
+   "llm": "E-bike",
+   "note": "The narrative contains the phrase \"e bike\"."
+  },
+  {
+   "id": "26858191",
+   "category": "FLHSMV missed, LLM found",
+   "agency": "St. Petersburg Police Department",
+   "flhsmv": "Less Likely",
+   "llm": "E-bike",
+   "note": "The narrative contains the phrase \"electric bicyclist\"."
+  },
+  {
+   "id": "26336300",
+   "category": "FLHSMV missed, LLM found",
+   "agency": "Florida Highway Patrol",
+   "flhsmv": "Less Likely",
+   "llm": "E-bike",
+   "note": "The narrative contains the phrase \"electronic bicycle\"."
+  },
+  {
+   "id": "26790524",
+   "category": "FLHSMV missed, LLM found",
+   "agency": "Broward County Sheriff's Office",
+   "flhsmv": "Less Likely",
+   "llm": "E-bike",
+   "note": "The narrative contains the phrase \"e bike\"."
+  },
+  {
+   "id": "26330175",
+   "category": "FLHSMV-positive, LLM Other",
+   "agency": "Florida Highway Patrol",
+   "flhsmv": "Likely",
+   "llm": "Other",
+   "note": "Property-damage field: PRIDE MOBILITY WHEELCHAIR SCOOTER SERIAL."
+  },
+  {
+   "id": "25930833",
+   "category": "FLHSMV-positive, LLM Other",
+   "agency": "Miami Beach PD",
+   "flhsmv": "Likely",
+   "llm": "Other",
+   "note": "Property-damage field: MICRO MOBILITY SCOOTER."
+  },
+  {
+   "id": "26198526",
+   "category": "FLHSMV-positive, LLM Other (several devices)",
+   "agency": "Titusville Police Department",
+   "flhsmv": "Definitely",
+   "llm": "Other",
+   "note": "LLM rule RC1 sent it to Other; the reasoning lists more than one device."
+  },
+  {
+   "id": "26184634",
+   "category": "FLHSMV-positive, LLM Other (incidental mention)",
+   "agency": "Lee County Sheriff's Office",
+   "flhsmv": "Highly Likely",
+   "llm": "Other",
+   "note": "The narrative mentions a scooter lift (equipment on a vehicle); LLM rule R12 sent it to Other."
+  },
+  {
+   "id": "27786286",
+   "category": "LLM blind spot (property field)",
+   "agency": "Ocala Police Department",
+   "flhsmv": "Definitely",
+   "llm": "Bicyclist",
+   "note": "Property-damage field: BLACK JASION E-BIKE."
+  },
+  {
+   "id": "26676979",
+   "category": "E-scooter scope difference",
+   "agency": "Wilton Manors Police Department",
+   "flhsmv": "Definitely",
+   "llm": "E-scooter",
+   "note": "Property-damage field: ELECTRIC SCOOTER."
+  }
+ ],
+ "example_sheets": [
+  {
+   "sheet": "FLHSMV_missed_LLM_found",
+   "rows": 28,
+   "what": "FLHSMV rated Less/Not Likely, LLM found an e-bike or e-scooter.",
+   "note": "Matches the \"FLHSMV misses\" count."
+  },
+  {
+   "sheet": "FLHSMV_false_pos_LLM_Other",
+   "rows": 591,
+   "what": "FLHSMV rated Likely or higher, LLM said Other.",
+   "note": "A subset of the 1,754 FLHSMV-positive, LLM-Other reports; how this subset was chosen is not recorded in the workbook. The tab's numbers use all 1,754."
+  },
+  {
+   "sheet": "FLHSMV_ebike_LLM_escooter",
+   "rows": 4084,
+   "what": "FLHSMV Definitely/Highly Likely, LLM E-scooter.",
+   "note": "Matches the scope-difference count."
+  },
+  {
+   "sheet": "LLM_blindspot_propfield",
+   "rows": 696,
+   "what": "FLHSMV Definitely, LLM Bicyclist, and the property-damage field names an electric bicycle.",
+   "note": "Matches the blind-spot count."
+  }
+ ],
+ "caveats": [
+  "FLHSMV's rating is assigned by FLHSMV reviewers using the keyword criteria in the legend above, and the LLM is a model reading the narrative. Neither is treated as the final truth: where they disagree, this tab shows the disagreement and the likely reason, not a verdict.",
+  "FLHSMV's criteria use the narrative and the property-damage fields; the LLM was given only the narrative. Some disagreement is therefore about what each source was allowed to see.",
+  "Rule codes and their definitions come from the LLM's classification prompt. The LLM sometimes cites a code whose trigger wording does not appear in its own reasoning (see the last column of the rule table), so a code is a guide to why, not proof.",
+  "The 1,754 FLHSMV-positive reports the LLM called Other, and the 152 FLHSMV-positive reports it called Bicyclist without a property-field explanation, have not been hand-reviewed.",
+  "This tab is a fixed comparison on the matched sample and ignores the sidebar filters.",
+  "Unmatched IDs (7,521) are excluded from every agreement figure, and the matched sample is made of two slices of the FLHSMV rating."
+ ],
+ "provenance": [
+  {
+   "item": "All counts, agreement, kappa, precision/recall",
+   "source": "Joined_EBike + Joined_RegBike",
+   "how": "One row per REPORT_NUMBER (highest FLHSMV rating, ties to latest LOAD_DT); FLHSMV positive = Likely or higher; LLM positive = E-bike (strict) or E-bike/E-scooter (lenient)."
+  },
+  {
+   "item": "Scope difference",
+   "source": "Joined sheets (cross-checked with FLHSMV_ebike_LLM_escooter)",
+   "how": "FLHSMV Definitely/Highly Likely and LLM E-scooter."
+  },
+  {
+   "item": "Blind spot",
+   "source": "Joined sheets (cross-checked with LLM_blindspot_propfield)",
+   "how": "FLHSMV Definitely, LLM Bicyclist, TYPE_PROPERTY_DAMAGE matches /electric|e-?bike|e bike|e-?bicycle|e bicycle|ebicycle/."
+  },
+  {
+   "item": "FLHSMV-positive, LLM Other / Bicyclist",
+   "source": "Joined sheets",
+   "how": "FLHSMV Likely or higher and LLM Other (or Bicyclist)."
+  },
+  {
+   "item": "FLHSMV misses",
+   "source": "Joined sheets (cross-checked with FLHSMV_missed_LLM_found)",
+   "how": "FLHSMV Less/Not Likely and LLM E-bike or E-scooter."
+  },
+  {
+   "item": "Rule codes",
+   "source": "reasoning column, Joined sheets",
+   "how": "Last \"Rule ...\" code in the LLM reasoning for each FLHSMV-positive, LLM-Other report; device wording counted from the reasoning's Device field."
+  },
+  {
+   "item": "Unmatched IDs and ID series",
+   "source": "Joined sheets",
+   "how": "Rows with blank FLHSMV columns; IDs grouped by their first two digits."
+  },
+  {
+   "item": "FLHSMV rating definitions",
+   "source": "FLHSMV E-Bike Likeliness legend",
+   "how": "Quoted from the legend; report counts per rating come from the Joined sheets."
+  },
+  {
+   "item": "Rule definitions",
+   "source": "LLM classification prompt",
+   "how": "Paraphrased from the prompt given to the model; trigger-wording percentages are counted from the reasoning column."
+  },
+  {
+   "item": "Trend and agencies",
+   "source": "Joined sheets",
+   "how": "LOAD_DT quarter of the FLHSMV record; agency = Agency Proper Name; agencies with 100+ FLHSMV-positive reports."
+  },
+  {
+   "item": "LLM confidence by prediction",
+   "source": "Chart_Data sheet",
+   "how": "Read from the workbook's static confidence table (the Joined sheets have no confidence column)."
+  }
+ ],
+ "checks": [
+  {
+   "check": "scope-difference IDs vs FLHSMV_ebike_LLM_escooter rows",
+   "computed": 4084,
+   "workbook": 4084,
+   "ok": true
+  },
+  {
+   "check": "blind-spot IDs vs LLM_blindspot_propfield rows",
+   "computed": 696,
+   "workbook": 696,
+   "ok": true
+  },
+  {
+   "check": "FLHSMV misses vs FLHSMV_missed_LLM_found rows",
+   "computed": 28,
+   "workbook": 28,
+   "ok": true
+  },
+  {
+   "check": "Summary: IDs matched to FLHSMV",
+   "computed": 13248,
+   "workbook": 13248,
+   "ok": true
+  },
+  {
+   "check": "Summary: IDs unmatched",
+   "computed": 7521,
+   "workbook": 7521,
+   "ok": true
+  }
+ ]
+}

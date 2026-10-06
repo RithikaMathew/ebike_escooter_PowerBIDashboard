@@ -25,7 +25,7 @@ with open(os.path.join(_HERE, "dashboard_core.py")) as f:
 # ============================================================================
 # TABS
 # ============================================================================
-tab0, tab1, tab2, tab3, tab4, tab5, tab6, tab7, tab8, tab9 = st.tabs([
+tab0, tab1, tab2, tab3, tab4, tab5, tab6, tab7, tab8, tab9, tab10 = st.tabs([
     "\u2139\ufe0f About This Dashboard",
     "\U0001F4C8 Overview & Trends",
     "\U0001F6A8 Severity & Outcomes",
@@ -36,6 +36,7 @@ tab0, tab1, tab2, tab3, tab4, tab5, tab6, tab7, tab8, tab9 = st.tabs([
     "\U0001F4DD Narrative & Crash Typing",
     "\U0001F50D Crash Causation",
     "\U0001F4CC Insights",
+    "\u2696\ufe0f LLM vs FLHSMV",
 ])
 
 TAB_FILES = [
@@ -49,6 +50,7 @@ TAB_FILES = [
     (tab7, "tab7_narrative.py"),
     (tab8, "tab8_causation.py"),
     (tab9, "tab9_insights.py"),
+    (tab10, "tab10_flhsmv.py"),
 ]
 _TABS_DIR = os.path.join(_HERE, "tabs")
 

@@ -1,0 +1,218 @@
+% Designed by Yiming Xu and Xiangjian Zhang in Gainesville, FL.
+% All rights reserved.
+
+% Excel to Latex: https://www.tablesgenerator.com/
+
+\documentclass[final]{beamer}
+
+% ====================
+% Packages
+% ====================
+
+\usepackage[flushleft]{threeparttable}
+\usepackage[T1]{fontenc}
+\usepackage{lmodern}
+\usepackage[size=custom,width=120,height=72,scale=1.0]{beamerposter}
+\usetheme{gemini}
+\usecolortheme{uchicago}
+\usepackage{graphicx}
+\usepackage{booktabs}
+\usepackage{tikz}
+\usepackage{pgfplots}
+\pgfplotsset{compat=1.17}
+\usepackage{caption}
+
+% ====================
+% Lengths
+% ====================
+
+% If you have N columns, choose \sepwidth and \colwidth such that
+% (N+1)*\sepwidth + N*\colwidth = \paperwidth
+\newlength{\sepwidth}
+\newlength{\colwidth}
+\setlength{\sepwidth}{0.025\paperwidth}
+\setlength{\colwidth}{0.3\paperwidth}
+
+\newcommand{\separatorcolumn}{\begin{column}{\sepwidth}\end{column}}
+
+% ====================
+% Title
+% ====================
+
+\title{The location problem of EV charging stations: research trends, critical gaps, and a future agenda}
+
+\author{Kelly Anran Zheng \inst{1} {\normalsize (anranzheng@ufl.edu)} \and Xiang 'Jacob' Yan \inst{1} {\normalsize (xiangyan@ufl.edu)}}
+
+\institute[shortinst]{\inst{1} Department of Civil and Coastal Engineering, University of Florida }
+
+
+% ====================
+% Footer (optional)
+% ====================
+
+\footercontent{
+  \href{ }{ } \hfill
+  102nd TRB Annual Meeting, Washington D.C., 2023 \hfill
+  \href{}{}}
+% (can be left out to remove footer)
+
+% ====================
+% Logo (optional)
+% ====================
+
+% use this to include logos on the left and/or right side of the header:
+% \logoright{\includegraphics[height=7cm]{logo1.pdf}}
+% \logoleft{\includegraphics[height=7cm]{logo2.pdf}}
+
+% ====================
+% Body
+% ====================
+
+\begin{document}
+\addtobeamertemplate{headline}{}
+{
+    \begin{tikzpicture}[remember picture,overlay]
+      \node [anchor=north west, inner sep=3cm] at ([xshift=1.2cm,yshift=-3cm]current page.north west)
+      {\includegraphics[height=2.5cm]{logos/UFTransportation_Institute.png}}; % also try shield-white.eps
+      \node [anchor=north east, inner sep=3cm] at ([xshift=-1cm,yshift=-2.6cm]current page.north east)
+      {\includegraphics[height=2.8cm]{logos/logo.png}};
+    \end{tikzpicture}
+}
+
+\begin{frame}[t]
+\begin{columns}[t]
+\separatorcolumn
+
+\begin{column}{\colwidth}
+
+  \begin{block}{Background}
+  \begin{itemize}
+      \item \textcolor[RGB]{7,84,156}{\textbf{Eletric vehicles (EVs)}} are increasingly adopted by consumers around the world, creating an urgent need for the development of \textcolor[RGB]{7,84,156}{\textbf{EV charging infrastructure}} in a variety of contexts. 
+      \item Much research work have been undertaken recently regarding \textcolor[RGB]{7,84,156}{\textbf{locating and sizing EV charging stations (EVCS)}}. However, few reviews provided an in-depth analysis of \textcolor[RGB]{7,84,156}{\textbf{key gaps}} in existing research, such as \textcolor[RGB]{7,84,156}{\textbf{data gaps, limitations in approaches and lack of consideration for key issues}}.
+  \end{itemize}
+
+  \end{block}
+
+    \begin{block}{Research Objectives}
+    \begin{itemize}
+      \item Identify \textcolor[RGB]{7,84,156}{\textbf{datasets}} commonly used in current research and the data gaps.
+      \item Identify \textcolor[RGB]{7,84,156}{\textbf{critical issues}} related to EV charging infrastructure largely ignored or addressed inadequately by the existing literature.
+      \item Review \textcolor[RGB]{7,84,156}{\textbf{existing modeling and analytical approaches}} and discuss their limitations.
+      \item Review existing empirical studies to explore if some important \textcolor[RGB]{7,84,156}{\textbf{study contexts }}(e.g., rural areas and underserved communities) have received less attention in existing studies. 
+      \item Propose a \textcolor[RGB]{7,84,156}{\textbf{future research agenda}} and \textcolor[RGB]{7,84,156}{\textbf{policy recommendations}} for EVCS development.
+    \end{itemize}
+  \end{block}
+
+  \begin{block}{Overview of research trends and topics}
+We first examine the recent research trends on EVCS with a \textcolor[RGB]{7,84,156}{\textbf{bibliographic analysis and a co-citation analysis}}. We find a growing research interest on four research themes, including \textcolor[RGB]{7,84,156}{\textbf{economics, energy sources, infrastructure planning, and network design}}.
+
+\begin{figure}
+  \centering
+  \includegraphics[scale=1.2]{logos/paper num.png}
+  \hspace{0.01in}
+  \includegraphics[scale=1.2]{logos/by country.png}
+  \caption{(a). Publications by year since 2000    (b). The top 10 countries with the most publications
+}
+\end{figure}
+
+With a focus on issues concerning the fields of \textcolor[RGB]{7,84,156}{\textbf{transportation engineering and planning}}, a total of \textcolor[RGB]{7,84,156}{\textbf{152
+publications}} were reviewed finally and were classified into \textcolor[RGB]{7,84,156}{\textbf{four categories}}:
+
+1. charging site selection and network optimization
+
+2. charging behavior analysis and modeling
+
+3. charging demand prediction
+
+4. equity in spatial access
+
+  \end{block}
+
+\end{column}
+
+\separatorcolumn
+
+\begin{column}{\colwidth}
+
+
+\begin{figure}
+  \centering
+  \includegraphics[scale=1.5]{logos/cluster.png}
+  \captionsetup{font={small,bf,stretch=1.25}}
+  \caption{Network relationship of most frequent keywords}
+\end{figure}
+
+
+  \begin{block}{Analysis of current research}
+
+\begin{table}[!ht]\tiny%
+\newcommand{\tabincell}[1]{}
+\caption{Commonly used datasets in EVCS research and major limitations}
+\resizebox{.85\columnwidth}{!}{
+\centering
+\begin{tabular}{lp{10cm}}
+\hline
+Types of datasets  & Examples         \\ \hline
+Infrastructure& Arrival \& departure time, travel duration, travel distance, travel path, origin and destination \\ 
+Mobility & Transit routes and stations, parking lots, current \& planned charging stations \\
+People & Household income, vehicle purchases \& ownership, race, charging demand \\
+Land use & Public facilities POI, topology proximity to facilities, natural disaster risk \\
+\hline
+\end{tabular}}
+\end{table}
+\begin{figure}
+  \centering
+  \includegraphics[scale=1.2]{logos/map.png}
+  \caption{Geographical distribution of case study regions in our reviewed work}
+\end{figure}
+
+  \end{block}
+
+
+
+\end{column}
+
+\separatorcolumn
+
+\begin{column}{\colwidth}
+\begin{figure}
+  \centering
+  \includegraphics[scale=1.28]{logos/trb.drawio.png}
+    \captionsetup{font={small,bf,stretch=1.2}}
+  \caption{Overview of research objectives and analytical approaches in existing EVCS research}
+\end{figure}
+
+    \begin{alertblock}{Key research gaps}
+    \begin{itemize}
+      \item Due to \textcolor[RGB]{250,70,22}{\textbf{data unavailability}}, \textcolor[RGB]{250,70,22}{\textbf{\textcolor[RGB]{250,70,22}{\textbf{uncertainty characteristics}}}} are usually neglected in location optimization of EVCS. {\textbf{\textcolor[RGB]{250,70,22}{\textbf{Time fluctuations}}}} are less examined in EV charging demand. 
+      \item There is still lack of \textcolor[RGB]{250,70,22}{\textbf{high dimension}} with input features for ML model training to plan the allocation of EVCS, e.g. high-resolution driving profiles, trafffc and weather conditions.
+      \item Studies on the charging needs of \textcolor[RGB]{250,70,22}{\textbf{disadvantaged population groups}} are limited. 
+      \item Limited work has examined how to facilitate \textcolor[RGB]{250,70,22}{\textbf{shared micromobility}} use by deploying shared micro-mobility charging station across different geographic and socioeconomic contexts.
+
+    \end{itemize}
+  \end{alertblock}
+
+
+
+
+
+  \begin{block}{Future research and policy directions}
+1. Collect and analyze data with higher spatiotemporal granularity. 
+
+2. Integrate uncertainty factors and temporal variations into EVCS analysis and modeling.
+
+3. Strengthen the linkages between EV charging and the following: future mobility, land use, and social equity. 
+
+
+
+
+  \end{block}
+
+
+\end{column}
+
+\separatorcolumn
+\end{columns}
+\end{frame}
+
+\end{document}
